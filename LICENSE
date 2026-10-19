@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 mecolley
+Copyright (c) 2026 pytsf contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,53 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+THIRD-PARTY NOTICES
+
+timsrust (MannLabs) — https://github.com/MannLabs/timsrust
+
+The reader for the `analysis.tsf_bin` binary layout in `pytsf/bin.py` and
+`capi/tsf_compat.c` was written with reference to, and derives its description
+of the line-spectrum block from, the `timsrust-tsf` crate. The code here is a
+reimplementation in Python and C, not a copy, and has been modified and
+extended (profile spectra, peak widths) relative to the original.
+
+At the time of writing, that repository's top-level LICENSE file contains the
+MIT License text reproduced below, while its crate manifests and README state
+Apache License 2.0. To satisfy either reading, this notice (a) reproduces the
+MIT permission notice in full, as MIT requires, and (b) provides the copyright
+attribution, statement of modification, and licence reference that Apache
+License 2.0 §4 requires for derivative works. The Apache License 2.0 text is
+available at http://www.apache.org/licenses/LICENSE-2.0. If MannLabs clarifies
+the intended licence, this notice should be updated to match.
+
+    MIT License
+
+    Copyright 2026 MannLabs
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the "Software"),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
+
+---
+
+This project contains no Bruker source code and redistributes no Bruker
+binaries. "Bruker", "timsTOF" and "tdf-sdk" are names of Bruker Daltonics
+products used only to identify the data format this software reads; this
+project is not affiliated with or endorsed by Bruker. See PROVENANCE.md.
