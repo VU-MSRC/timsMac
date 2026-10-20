@@ -34,14 +34,16 @@ with TdfData("pasef.d") as tdf:
 ## Install
 
 ```bash
-pip install git+https://github.com/OWNER/REPO.git
+pip install git+https://github.com/VU-MSRC/timsMac.git
 ```
 
-or, from a clone:
+That installs the package straight from GitHub without a clone. Or, from a clone
+(`git clone https://github.com/VU-MSRC/timsMac.git && cd timsMac`):
 
 ```bash
-pip install -e .                 # the package
-pip install -e ".[examples]"     # + matplotlib, pyimzML and JupyterLab for the notebooks
+pip install .                    # the package
+pip install ".[examples]"        # + matplotlib, pyimzML and JupyterLab for the notebooks
+pip install -e ".[test]"         # editable install for developing or running the tests
 ```
 
 ## What it does
