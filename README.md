@@ -1,6 +1,6 @@
 # pytsf
 
-**Read Bruker timsTOF TSF (`.d`) data on macOS — in pure Python, with no vendor library.**
+**Read Bruker timsTOF `.d` data — TSF and TDF (ion mobility) — on macOS, in pure Python, with no vendor library.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
@@ -11,16 +11,21 @@ Bruker's `tdf-sdk` ships `timsdata.dll` for Windows and `libtimsdata.so` for Lin
 and nothing else. There is no macOS build — Intel or Apple Silicon — so the standard route
 from a timsTOF `.d` folder to anything else simply does not run on a Mac.
 
-`pytsf` reimplements the TSF reading path in Python. It needs NumPy and `zstandard`, and runs
-anywhere they do.
+`pytsf` reimplements the reading path in Python for both formats: **TSF** (`analysis.tsf`,
+MALDI imaging and other non-mobility acquisitions) and **TDF** (`analysis.tdf`, TIMS
+ion-mobility data — PASEF, PRM-PASEF, direct infusion). It needs NumPy and `zstandard`, and
+runs anywhere they do.
 
 ```python
-from pytsf import TsfData
+from pytsf import TsfData, TdfData
 
-with TsfData("analysis.d") as tsf:
-    print(len(tsf), "spectra")
+with TsfData("imaging.d") as tsf:
     mz, intensity = tsf.line_spectrum_mz(1)       # centroided
     mz, intensity = tsf.profile_spectrum_mz(1)    # profile
+
+with TdfData("pasef.d") as tdf:
+    mz, oneoverk0, intensity = tdf.frame_mz_mobility(1)   # every peak of frame 1
+    ccs = tdf.oneoverk0_to_ccs(oneoverk0, mz, charge=1)
 ```
 
 ## Install
@@ -32,10 +37,13 @@ pip install git+https://github.com/OWNER/REPO.git
 or, from a clone:
 
 ```bash
-pip install -e .
+pip install -e .                 # the package
+pip install -e ".[examples]"     # + matplotlib, pyimzML and JupyterLab for the notebooks
 ```
 
 ## What it does
+
+**TSF**
 
 - **Line (centroided) spectra**, **profile spectra**, and **peak widths**
 - **index ↔ m/z** conversion, fitting the published time-of-flight calibration equation to the
@@ -45,10 +53,20 @@ pip install -e .
 - A drop-in API: method names mirror the Python wrapper in Bruker's own SDK examples, so most
   scripts port by changing the import
 
-**Out of scope:** TDF, the ion-mobility sibling format — use
-[OpenTIMS](https://github.com/michalsta/opentims) or
-[timsrust](https://github.com/MannLabs/timsrust), which handle it well. Post-hoc recalibrated
-states are also unsupported, and raise rather than silently returning raw-calibration values.
+**TDF (ion mobility)**
+
+- **Frames** decoded to (scan, TOF index, intensity) arrays — centroided peaks per mobility scan
+- **index ↔ m/z**, the same fitted calibration as for TSF
+- **scan ↔ 1/K0**, calibrated from the reference ions the file records, when they are present
+  in the data (see [How mobility is calculated](#how-mobility-is-calculated))
+- **1/K0 ↔ CCS** by the Mason-Schamp equation
+- The `PasefFrameMsMsInfo`, `Precursors`, `Frames` and other tables from Bruker's documented
+  schema, as rows
+
+**Out of scope:** post-hoc recalibrated states (the reader raises rather than silently
+returning raw-calibration values), and vendor-side processing such as the SDK's
+`tims_extract_centroided_spectrum_for_frame` — you get the stored peaks and do your own
+summing. The C library (`capi/`) covers TSF only.
 
 ## Calling it from C, R, MATLAB, Julia, C#
 
@@ -65,6 +83,17 @@ make                       # -> libtimsdata_tsf.dylib
 make check DATASET=/path/to/analysis.d
 ```
 
+Or, with no package manager involved at all — download a
+[zstd release](https://github.com/facebook/zstd/releases), unpack it, and:
+
+```bash
+make ZSTD_SRC=/path/to/zstd-1.5.7     # builds zstd from source, links it statically
+```
+
+The library then depends on nothing but macOS itself, which is the best form to hand to
+other software, and it avoids Homebrew — useful on macOS versions Homebrew no longer
+builds packages for (anything older than the three most recent releases).
+
 | target | what it does |
 |---|---|
 | `make` | build for this machine (the usual case) |
@@ -72,13 +101,14 @@ make check DATASET=/path/to/analysis.d
 | `make check DATASET=...` | build the smoke test and run it against a dataset |
 | `make install PREFIX=...` | install the library and header, default `/usr/local` |
 | `make compat-name` | add a `libtimsdata.dylib` symlink for software that loads the vendor library by name |
-| `make universal` | macOS arm64 + x86_64 in one binary — needs a universal libzstd, see the notes in the Makefile |
+| `make ZSTD_SRC=…` | build zstd from its source tree and link it statically: no third-party runtime dependency |
+| `make universal` | macOS arm64 + x86_64 in one binary — easiest combined with `ZSTD_SRC=`, which builds zstd for both architectures too |
 
 Dependencies are checked before compiling, so a missing one gives an actionable message
-rather than a linker error. `make universal` is rarely what you want: Homebrew installs zstd
-for your native architecture only, so the universal link fails unless you supply a universal
-libzstd yourself. Building separately on each architecture and `lipo`-ing the results is
-usually easier.
+rather than a linker error. `make universal` on its own is rarely what you want: Homebrew
+installs zstd for your native architecture only, so the universal link fails. Combine it with
+`ZSTD_SRC=`, which passes the architecture flags through to the zstd build, or build on each
+architecture separately and `lipo` the results.
 
 
 It is plain C with no Python dependency, needing only SQLite and zstd, and builds on Linux
@@ -94,6 +124,48 @@ stated at the top of `capi/tsf_compat.h`.
 bindings and compares every entry point spectrum by spectrum. On both real datasets below,
 spectra decode identically through the C ABI and m/z agrees within tolerance inside the
 calibrant range, exactly as for the Python package.
+
+## Reading ion-mobility (TDF) data
+
+```python
+from pytsf import TdfData
+
+with TdfData("run.d") as tdf:
+    print(len(tdf), "frames,", tdf.meta.num_scans, "scans each")
+    print(tdf.mobility)              # how 1/K0 was calibrated, and from what
+
+    fr = tdf.read_frame(1)           # .scan, .tof_indices, .intensities; .scan_offsets
+    mz = tdf.index_to_mz(fr.tof_indices)
+    k0 = tdf.scan_to_oneoverk0(fr.scan)
+
+    for row in tdf.meta.pasef_msms_info(frame_id=2):   # PASEF isolation windows
+        print(row["ScanNumBegin"], row["ScanNumEnd"], row["IsolationMz"])
+```
+
+Intensities are returned **as stored in the file**, which is also what timsrust and OpenTIMS
+return. The vendor library returns them scaled by a factor that is not documented anywhere
+Bruker distributes (1.0 on one of our files, 2.5 on the other, apparently tied to the
+accumulation time); relative intensities within a file are unaffected. If you need to compare
+absolute intensities with vendor-derived numbers, be aware of this.
+
+### Worked example: `examples/tdf_analysis.ipynb`
+
+A complete notebook for TIMS data: it opens a `.d`, prints the calibration audit trail (which
+reference ions were found, their S/N and m/z error, whether they were used or the reader fell
+back), draws a frame as an m/z × mobility map, extracts an ion mobilogram and resolves an
+isobaric pair with CCS, builds mobility-integrated and mobility-filtered mass spectra, renders
+MALDI ion images with and without a mobility window, and exports per-pixel spectra to imzML
+with [pyimzML](https://github.com/alexandrovteam/pyimzML) (mobility-integrated, or one
+mobility band). It runs out of the box against a synthetic MALDI-TIMS imaging dataset that
+contains a calibrant and an isobaric pair:
+
+```bash
+python examples/make_demo_tdf_dataset.py demo_tims_imaging.d
+jupyter lab examples/tdf_analysis.ipynb
+```
+
+For a quick look at a file without the notebook, `examples/dump_tdf_frame.py run.d` prints the
+same calibration report and dumps one frame as scan / 1/K0 / CCS / m/z / intensity.
 
 ## Converting imaging data to imzML
 
@@ -136,6 +208,22 @@ converting a 3,000-spectrum run takes about 1.4 times as long as the vendor libr
 `tests/validate_real_dataset.py` reproduces this check against any `.d` directory: spectra
 must decode identically, and m/z must agree within 5 ppm inside the calibrant range, or it
 exits non-zero. Worth running once for a new instrument or acquisition mode.
+
+**TDF**, validated against a timsTOF fleX direct-infusion tune-mix run and a timsTOF HT
+DDA-PASEF blank:
+
+| | tune mix (fleX, 6.1.6) | DDA-PASEF blank (HT, 7.0.5) |
+|---|---|---|
+| frames × scans | 293 × 2,858 | 2,725 × 1,054 |
+| scan structure + TOF indices | 5,138,519 peaks — **0 mismatches** | 8,657,887 peaks — **0 mismatches** |
+| intensities | stored values; vendor returns ×2.5 | stored values; vendor returns ×1 (25 peaks differ by 1 count from float rounding) |
+| m/z, within the calibrant range | 0.51 ppm median, 1.5 max | 0.68 ppm |
+| 1/K0, from reference ions in the data | **0.25 % median, 0.53 % max** | *no calibrant ions in the file* |
+| 1/K0, acquisition-range approximation | 2.1 % median, 2.7 max | 3.5 % median, 4.1 max |
+| *instrument's own mobility calibration SD* | *0.26 %* | *0.28 %* |
+
+**13.8 million peaks, zero mismatches** in frame decoding. `tests/validate_real_tdf.py`
+reproduces this against any TDF `.d` directory.
 
 ## How m/z is calculated
 
@@ -183,13 +271,61 @@ For comparison, `timsrust-tsf` interpolates the m/z axis between the acquisition
 endpoints instead of using the recorded calibration points; its own README states ±10–20 ppm
 for its pure-Rust path, which matches what we measure.
 
+## How mobility is calculated
+
+A TDF file records, in the documented `CalibrationInfo` table, the calibrant used for the
+mobility axis: its ions' known masses and reduced mobilities (`ReferencePeakMasses`,
+`ReferencePeakMobilities`). If those ions are present in the data — a direct-infusion
+tune-mix run, or any acquisition with calibrant in the sample — `pytsf` locates each one by
+m/z, finds its apex scan, and fits **1/K0 as a linear function of scan number** through them.
+This is the ordinary external calibration of ion-mobility mass spectrometry, and its physical
+basis is that TIMS elutes ions by ramping the trapping field linearly in time, with 1/K0 linear
+in that field to first order:
+
+> Michelmann, K., Silveira, J. A., Ridgeway, M. E., Park, M. A. *Fundamentals of Trapped Ion
+> Mobility Spectrometry.* J. Am. Soc. Mass Spectrom. 2015, 26, 14–24.
+>
+> Ridgeway, M. E., Lubeck, M., Jordens, J., Mann, M., Park, M. A. *Trapped ion mobility
+> spectrometry: A short review.* Int. J. Mass Spectrom. 2018, 425, 22–35.
+
+Reference 1/K0 values for the usual tune mix are tabulated in the CCS compendium of
+Stow et al., *Anal. Chem.* 2017, 89, 9048–9055; `pytsf` uses the values the file itself records.
+
+Each located ion must pass quality gates before it is used — signal-to-background ≥ 50,
+observed m/z within 2.5 ppm of the known mass, and the final fit residual ≤ 1 % with 1/K0
+falling with scan number, as TIMS requires. On a blank these gates reject the noise picks and
+the reader **falls back, with a warning,** to the approximation
+[timsrust](https://github.com/MannLabs/timsrust) uses: linear interpolation between the
+documented `OneOverK0AcqRangeLower/Upper` endpoints. The real voltage ramp overshoots the
+nominal range, so that approximation is only good to a few percent (measured above). You can
+also pass your own `MobilityCalibration` built from ions you know to be in your data.
+
+CCS is computed from 1/K0 with the Mason-Schamp equation, using CODATA 2018 constants, N₂ as
+the buffer gas and the 305 K convention of the TIMS literature; it reproduces the vendor's
+CCS values to every displayed digit.
+
+The vendor records its own mobility calibration in a `TimsCalibration` table whose coefficient
+layout is not published. `pytsf` does not read it.
+
 ## Limitations
 
 Please read these before relying on the output.
 
-- Validation covers **two timsTOF fleX MALDI imaging acquisitions**, both polarities. It does
-  **not** cover non-imaging TSF acquisitions, other instrument models, peak widths (absent
-  from both files, so that path is tested only synthetically), or recalibrated states.
+- TSF validation covers **two timsTOF fleX MALDI imaging acquisitions**, both polarities. It
+  does **not** cover non-imaging TSF acquisitions, other instrument models, peak widths
+  (absent from both files, so that path is tested only synthetically), or recalibrated states.
+- TDF validation covers **one direct-infusion tune-mix run and one DDA-PASEF blank**. Frame
+  decoding is bit-exact on both; it does **not** yet cover MALDI PASEF imaging, DIA-PASEF, or
+  files with more than one `MzCalibration` row (refused at open time).
+- **Mobility accuracy depends on calibrant ions being in the data.** With them, 1/K0 agrees
+  with the vendor to ~0.25 % inside the span those ions cover, degrading when extrapolating
+  beyond it (`scan_to_oneoverk0` warns). Without them — a blank, or a sample run without
+  calibrant — the acquisition-range approximation is used and 1/K0 is only good to **2–4 %**,
+  with a warning. For the best result on real samples, acquire with calibrant present, or pass
+  `MobilityCalibration.from_reference_ions(...)` built from ions of known mobility in your
+  sample.
+- TDF intensities are the stored values, which differ from the vendor library's by an
+  undocumented constant factor per file (see above).
 - The calibration is **one fit per analysis**, and accuracy **degrades outside the
   calibrant's mass range** — quantified above, and `index_to_mz` warns when it happens. If
   your acquisition range extends well below your lowest calibrant mass, as the positive-mode
@@ -215,7 +351,9 @@ TIMSDATA_SO=/path/to/libtimsdata.so pytest tests/    # + differential tests
 
 # against a real dataset (the check that matters):
 TIMSDATA_SO=/path/to/libtimsdata.so \
-    python tests/validate_real_dataset.py /path/to/analysis.d
+    python tests/validate_real_dataset.py /path/to/imaging.d     # TSF
+TIMSDATA_SO=/path/to/libtimsdata.so \
+    python tests/validate_real_tdf.py /path/to/pasef.d           # TDF
 ```
 
 The differential tests skip automatically when the vendor library is absent, which is the
@@ -228,17 +366,21 @@ imported by the package itself.
 produced by decompiling or disassembling the vendor library. Its understanding of the format
 comes from:
 
-- **[timsrust](https://github.com/MannLabs/timsrust)** (MannLabs) — in particular the
-  `timsrust-tsf` crate, which to our knowledge is the first open-source TSF reader and which
-  documents the structure of the binary spectrum file. `pytsf`'s binary reader builds directly
-  on it; the applicable licence notice is reproduced in [LICENSE](LICENSE), which also records an inconsistency in upstream's own licence metadata. If you work in Rust,
-  use timsrust rather than this.
+- **[timsrust](https://github.com/MannLabs/timsrust)** (MannLabs) — the `timsrust-tsf` crate,
+  which to our knowledge is the first open-source TSF reader and documents the structure of
+  the binary spectrum file, and the `timsrust-tdf` crate's frame reader, which documents the
+  TDF frame layout (as does [OpenTIMS](https://github.com/michalsta/opentims) independently).
+  `pytsf`'s binary readers build directly on them; the applicable licence notice is reproduced
+  in [LICENSE](LICENSE), which also records an inconsistency in upstream's own licence
+  metadata. If you work in Rust, use timsrust rather than this.
 - **Bruker's own distributed documentation** — the schema reference and public C API header
   shipped with the tdf-sdk, the former of which states that it is the primary reference for
   the file format.
-- **Published mass-spectrometry literature** on time-of-flight calibration, in particular the
-  calibration model described in [OpenMS](https://github.com/OpenMS/OpenMS)'s
-  `TOFCalibration` (after Gobom et al., *Anal. Chem.* 2002).
+- **Published mass-spectrometry literature**: the time-of-flight calibration model described
+  in [OpenMS](https://github.com/OpenMS/OpenMS)'s `TOFCalibration` (after Gobom et al.,
+  *Anal. Chem.* 2002); the TIMS operating principle (Michelmann et al. 2015, Ridgeway et al.
+  2018); the Mason-Schamp equation with CODATA constants; and the tune-mix CCS compendium of
+  Stow et al. 2017.
 - **Behavioural testing** through the vendor library's documented public C API.
 
 Related projects worth knowing about:
@@ -246,6 +388,8 @@ Related projects worth knowing about:
 - **[OpenTIMS / TimsPy](https://github.com/michalsta/opentims)** — the reference open-source
   TDF reader, and the paper that opened up timsTOF data generally
   ([Pietrzak et al., *J. Proteome Res.* 2021](https://pubs.acs.org/doi/10.1021/acs.jproteome.0c00962)).
+  For heavy proteomics TDF work it is the more mature choice; `pytsf` adds a macOS-friendly
+  pure-Python path and a reference-ion mobility calibration.
 - **[AlphaTims](https://github.com/MannLabs/alphatims)** — fast TDF access for proteomics.
 - **[pyimzML](https://github.com/alexandrovteam/pyimzML)** — imzML reading and writing, used
   by the conversion notebook.
@@ -277,12 +421,12 @@ exist without that groundwork.
 
 ## Contributing
 
-Issues and pull requests welcome. The single most valuable contribution is **a TSF dataset
-from a configuration not yet covered** — a non-imaging acquisition, a non-fleX instrument, a
-file with peak widths, or one whose calibrant does not cover its acquisition range. A small file is
-enough.
+Issues and pull requests welcome. The single most valuable contribution is **a dataset from
+a configuration not yet covered** — a non-imaging TSF acquisition, a non-fleX instrument, a
+file with peak widths, a MALDI PASEF imaging or DIA-PASEF TDF run, or one whose calibrant
+does not cover its acquisition range. A small file is enough.
 
 ## Licence
 
 MIT — see [LICENSE](LICENSE), which also carries the third-party notice for
-[timsrust](https://github.com/MannLabs/timsrust), from which the binary reader derives.
+[timsrust](https://github.com/MannLabs/timsrust), from which the binary readers derive.
