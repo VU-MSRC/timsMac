@@ -16,7 +16,7 @@ MALDI imaging and other non-mobility acquisitions) and **TDF** (`analysis.tdf`, 
 ion-mobility data — PASEF, PRM-PASEF, direct infusion). It needs NumPy and `zstandard`, and
 runs anywhere they do. **Not using Python?** A pre-built macOS library with Bruker's own C
 function names, for MATLAB, R, Julia, C and anything else, is on the
-[Releases page](https://github.com/OWNER/REPO/releases) — see
+[Releases page]([https://github.com/OWNER/REPO/releases](https://github.com/VU-MSRC/timsMac/) — see
 [Calling it from C, R, MATLAB, Julia, C#](#calling-it-from-c-r-matlab-julia-c).
 
 ```python
@@ -81,11 +81,10 @@ but not bit-for-bit for the *numbers*.
 
 ### Use the pre-built library
 
-The [Releases page](https://github.com/OWNER/REPO/releases) carries a ready-made
+The [Releases page](https://github.com/VU-MSRC/timsMac/releases) carries a ready-made
 `libtimsdata_tsf.dylib` and its header `tsf_compat.h`. The library is **universal** — one
 file for Apple Silicon and Intel — runs on **macOS 12 or later**, and depends on nothing but
-macOS itself (zstd is compiled in; SQLite comes with the system). No Homebrew, no compiler,
-no Python.
+macOS itself (zstd is compiled in; SQLite comes with the system). 
 
 ```bash
 cd ~/Downloads
@@ -446,33 +445,20 @@ Related projects worth knowing about:
 
 This project documents **no detail of the format beyond what the sources above already make
 public**. Where behaviour had to be determined empirically, the result is expressed in the
-implementation and validated against the vendor library, not published as a specification.
+implementation and validated against the vendor library.
 
-### On the vendor SDK licence
-
-Bruker's tdf-sdk end-user licence prohibits decompiling, disassembling, reverse engineering or
-modifying the software, and `pytsf` was written to respect that. The vendor library is
-exercised only through the public C API it was published for, and only in the test suite.
-
-Users should be aware that interoperability exceptions to such terms exist in some
-jurisdictions — EU Directive 2009/24/EC Art. 6, and more narrowly US DMCA §1201(f) — but this
-project does not rely on them. **None of this is legal advice.** If you intend to redistribute
-`pytsf` or build a product on it, take your own.
 
 ## Citing
 
 If `pytsf` is useful in published work, please cite this repository
-(`https://github.com/OWNER/REPO`), and please also cite
+(`https://github.com/OWNER/REPO](https://github.com/VU-MSRC/timsMac/`), and please also cite
 [timsrust](https://github.com/MannLabs/timsrust) and the
 [OpenTIMS paper](https://pubs.acs.org/doi/10.1021/acs.jproteome.0c00962) — this would not
 exist without that groundwork.
 
 ## Contributing
 
-Issues and pull requests welcome. The single most valuable contribution is **a dataset from
-a configuration not yet covered** — a non-imaging TSF acquisition, a non-fleX instrument, a
-file with peak widths, a MALDI PASEF imaging or DIA-PASEF TDF run, or one whose calibrant
-does not cover its acquisition range. A small file is enough.
+Issues and pull requests welcome. 
 
 ## Licence
 
