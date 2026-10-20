@@ -1,4 +1,4 @@
-# pytsf
+# pytsf and timsMac
 
 **Read Bruker timsTOF `.d` data — TSF and TDF (ion mobility) — on macOS, in pure Python, with no vendor library.**
 
