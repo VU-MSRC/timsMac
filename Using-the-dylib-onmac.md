@@ -1,16 +1,15 @@
 # Using the pytsf dylib on a Mac
 
-Oct 20, 2026 · @maddie
 
 `libtimsdata_tsf.dylib` lets software on any Mac (Intel or Apple Silicon, macOS 12 or later) read Bruker timsTOF **TSF** `.d` data through the same C functions as Bruker's own `timsdata` library, which has no macOS build. This page covers getting the file onto your Mac, where to put it, and calling it from Python, MATLAB, R, Julia and C.
 
 ## 1. Get the file
 
-You need two files from the release page, `https://github.com/OWNER/REPO/releases` *(replace OWNER/REPO with the repository's path)*:
+You need two files from the release page, https://github.com/VU-MSRC/timsMac/releases :
 
 | File | What it is |
 | --- | --- |
-| `libtimsdata_tsf.dylib` | the library: one file, arm64 + x86\_64, macOS 12 or later, no other dependencies |
+| `libtimsdata_tsf.dylib` | the library: one file, arm64 + x86\_64, macOS 12 or later |
 | `tsf_compat.h` | the C header that declares its functions; needed for C, C++ and MATLAB, useful as reference for everything else |
 
 Open Terminal (Applications → Utilities) and, in the folder where the download landed:
