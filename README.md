@@ -16,7 +16,7 @@ MALDI imaging and other non-mobility acquisitions) and **TDF** (`analysis.tdf`, 
 ion-mobility data — PASEF, PRM-PASEF, direct infusion). It needs NumPy and `zstandard`, and
 runs anywhere they do. **Not using Python?** A pre-built macOS library with Bruker's own C
 function names, for MATLAB, R, Julia, C and anything else, is on the
-[Releases page]([https://github.com/OWNER/REPO/releases](https://github.com/VU-MSRC/timsMac/) — see
+[Releases page](https://github.com/VU-MSRC/timsMac/releases) — see
 [Calling it from C, R, MATLAB, Julia, C#](#calling-it-from-c-r-matlab-julia-c).
 
 ```python
