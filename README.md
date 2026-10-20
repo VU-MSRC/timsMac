@@ -14,7 +14,10 @@ from a timsTOF `.d` folder to anything else simply does not run on a Mac.
 `pytsf` reimplements the reading path in Python for both formats: **TSF** (`analysis.tsf`,
 MALDI imaging and other non-mobility acquisitions) and **TDF** (`analysis.tdf`, TIMS
 ion-mobility data — PASEF, PRM-PASEF, direct infusion). It needs NumPy and `zstandard`, and
-runs anywhere they do.
+runs anywhere they do. **Not using Python?** A pre-built macOS library with Bruker's own C
+function names, for MATLAB, R, Julia, C and anything else, is on the
+[Releases page](https://github.com/OWNER/REPO/releases) — see
+[Calling it from C, R, MATLAB, Julia, C#](#calling-it-from-c-r-matlab-julia-c).
 
 ```python
 from pytsf import TsfData, TdfData
@@ -70,16 +73,64 @@ summing. The C library (`capi/`) covers TSF only.
 
 ## Calling it from C, R, MATLAB, Julia, C#
 
-If you have software that already loads Bruker's shared library by name, `capi/` builds a
-replacement exposing the same C functions (`tsf_open`, `tsf_read_line_spectrum_v2`,
+If you have software that already loads Bruker's shared library by name, this repository
+provides a replacement exposing the same C functions (`tsf_open`, `tsf_read_line_spectrum_v2`,
 `tsf_index_to_mz`, …), so that software can run on macOS. Spectra come back identical; m/z
 is computed independently and agrees to about 1 ppm, so it is a drop-in for the *interface*
-but not bit-for-bit for the *numbers*:
+but not bit-for-bit for the *numbers*.
+
+### Use the pre-built library
+
+The [Releases page](https://github.com/OWNER/REPO/releases) carries a ready-made
+`libtimsdata_tsf.dylib` and its header `tsf_compat.h`. The library is **universal** — one
+file for Apple Silicon and Intel — runs on **macOS 12 or later**, and depends on nothing but
+macOS itself (zstd is compiled in; SQLite comes with the system). No Homebrew, no compiler,
+no Python.
+
+```bash
+cd ~/Downloads
+shasum -a 256 libtimsdata_tsf.dylib              # must match the hash on the release page
+xattr -d com.apple.quarantine libtimsdata_tsf.dylib   # once; macOS flags browser downloads
+sudo cp libtimsdata_tsf.dylib /usr/local/lib/
+sudo cp tsf_compat.h /usr/local/include/
+```
+
+Then load it from your software by full path, or by name from `/usr/local/lib`:
+
+```python
+import ctypes
+lib = ctypes.CDLL("/usr/local/lib/libtimsdata_tsf.dylib")   # Python; declare argtypes as in tsf_compat.h
+```
+
+```matlab
+loadlibrary('/usr/local/lib/libtimsdata_tsf.dylib', 'tsf_compat.h', 'alias', 'tsf')   % MATLAB
+```
+
+```bash
+cc myprog.c -I/usr/local/include -L/usr/local/lib -ltimsdata_tsf -Wl,-rpath,/usr/local/lib   # C
+```
+
+Bruker's own SDK example `tsfdata.py` works with it once its platform check is given a macOS
+branch naming this file. For software that asks for the vendor's file name literally,
+`sudo ln -s libtimsdata_tsf.dylib /usr/local/lib/libtimsdata.dylib` — local interoperability
+only; it is not the vendor library and should not be passed on under that name.
+
+Every function returns an error code on failure and `tsf_get_last_error_string` explains it
+in words. The deliberate differences from the vendor library — recalibrated states
+unsupported, `tsf_set_num_threads` accepted and ignored, `length <= 0` treated as a pure size
+query, ~1 ppm m/z — are stated at the top of `capi/tsf_compat.h`. `capi/smoke_test.c` is a
+complete worked example of calling it from C.
+
+### Build it yourself
+
+Only needed if you want to change the source, build for Linux (`.so`), or prefer not to run a
+binary someone else compiled. It is plain C with no Python dependency, needing only SQLite
+and zstd:
 
 ```bash
 cd capi
 brew install zstd          # macOS; SQLite ships with the system
-make                       # -> libtimsdata_tsf.dylib
+make                       # -> libtimsdata_tsf.dylib for this machine
 make check DATASET=/path/to/analysis.d
 ```
 
@@ -92,7 +143,13 @@ make ZSTD_SRC=/path/to/zstd-1.5.7     # builds zstd from source, links it static
 
 The library then depends on nothing but macOS itself, which is the best form to hand to
 other software, and it avoids Homebrew — useful on macOS versions Homebrew no longer
-builds packages for (anything older than the three most recent releases).
+builds packages for (anything older than the three most recent releases). The pre-built
+release binary was made this way, as a universal build:
+
+```bash
+export MACOSX_DEPLOYMENT_TARGET=12.0                 # so the result loads on macOS 12+
+make universal ZSTD_SRC=/path/to/zstd-1.5.7          # arm64 + x86_64 in one file
+```
 
 | target | what it does |
 |---|---|
@@ -108,17 +165,8 @@ Dependencies are checked before compiling, so a missing one gives an actionable 
 rather than a linker error. `make universal` on its own is rarely what you want: Homebrew
 installs zstd for your native architecture only, so the universal link fails. Combine it with
 `ZSTD_SRC=`, which passes the architecture flags through to the zstd build, or build on each
-architecture separately and `lipo` the results.
-
-
-It is plain C with no Python dependency, needing only SQLite and zstd, and builds on Linux
-(`.so`) and macOS (`.dylib`). `capi/smoke_test.c` is a worked example of calling it.
-
-It computes m/z the same way the Python package does, from the same published equation, so a
-tool that loads it in place of the vendor library gets ~1 ppm agreement rather than exactness.
-That and the other deliberate differences — recalibrated states unsupported,
-`tsf_set_num_threads` accepted and ignored, `length <= 0` treated as a pure size query — are
-stated at the top of `capi/tsf_compat.h`.
+architecture separately and `lipo` the results. Run `make universal` as the first build in a
+fresh tree — a plain `make` beforehand leaves an arm64-only zstd behind.
 
 `capi/validate_capi.py` loads this library and the vendor's through the *same* ctypes
 bindings and compares every entry point spectrum by spectrum. On both real datasets below,
