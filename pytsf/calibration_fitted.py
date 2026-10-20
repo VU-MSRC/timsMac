@@ -92,6 +92,7 @@ class FittedCalibration:
             raise ValueError("order must be 2, 3 or 4")
         self.order = order
         self.warn_outside_range = warn_outside_range
+        self._warned = False
         self._axis_cache: dict[int, np.ndarray] = {}
 
         uri = ("file:" + str(sqlite_path).replace("?", "%3f").replace("#", "%23")
@@ -275,7 +276,7 @@ class FittedCalibration:
         idx = np.atleast_1d(np.asarray(indices, dtype=np.float64))
         t = self.delay + idx * self.timebase
         mz = self.mz_from_time(t)
-        if self.warn_outside_range and mz.size:
+        if self.warn_outside_range and not self._warned and mz.size:
             finite = np.isfinite(mz)
             if finite.any():
                 # Tolerate roundoff at the calibrant endpoints themselves.
@@ -283,13 +284,13 @@ class FittedCalibration:
                 hi = self.mz_max * (1.0 + 1e-9)
                 out = (mz[finite] < lo) | (mz[finite] > hi)
                 if out.any():
+                    self._warned = True   # once per calibration, not per call
                     warnings.warn(
-                        f"{int(out.sum())} of {int(finite.sum())} values fall "
-                        f"outside the calibrant range "
-                        f"({self.mz_min:.1f}-{self.mz_max:.1f} m/z); the fitted "
-                        "calibration extrapolates there and accuracy degrades. "
-                        "See calibration_fitted docs.",
-                        RuntimeWarning, stacklevel=2)
+                        f"values outside the calibrant range "
+                        f"({self.mz_min:.1f}-{self.mz_max:.1f} m/z) were converted; "
+                        "the fitted calibration extrapolates there and accuracy "
+                        "degrades (see calibration_fitted docs). Reported once per "
+                        "calibration.", RuntimeWarning, stacklevel=2)
         return float(mz[0]) if scalar else mz
 
     def index_axis(self, n: int) -> np.ndarray:
