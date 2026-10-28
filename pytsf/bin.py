@@ -16,16 +16,16 @@ which position is the index.
 
 from __future__ import annotations
 
+import contextlib
 import struct
-from typing import Optional
 
 import numpy as np
 import zstandard as zstd
 
 __all__ = [
+    "MAX_SUBBLOCK_SIZE",
     "BinaryFile",
     "TsfBinError",
-    "MAX_SUBBLOCK_SIZE",
     "decode_line_block",
     "decode_profile_block",
     "encode_line_block",
@@ -65,9 +65,8 @@ def _decompress(buf: bytes, what: str) -> bytes:
 
 # -- decoding -------------------------------------------------------------
 
-def decode_line_block(
-    raw: bytes, num_peaks: int, with_width: Optional[bool] = None
-):
+
+def decode_line_block(raw: bytes, num_peaks: int, with_width: bool | None = None):
     """Decode an already-decompressed line sub-block.
 
     Returns ``(index, intensity, width_or_None)``.
@@ -82,17 +81,11 @@ def decode_line_block(
         with_width = len(raw) >= n * 16
     need = n * (16 if with_width else 12)
     if len(raw) < need:
-        raise TsfBinError(
-            f"line sub-block too short: {len(raw)} bytes, need {need} for {n} peaks"
-        )
+        raise TsfBinError(f"line sub-block too short: {len(raw)} bytes, need {need} for {n} peaks")
 
     index = np.frombuffer(raw, dtype="<f8", count=n, offset=0).copy()
     inten = np.frombuffer(raw, dtype="<f4", count=n, offset=n * 8).copy()
-    width = (
-        np.frombuffer(raw, dtype="<f4", count=n, offset=n * 12).copy()
-        if with_width
-        else None
-    )
+    width = np.frombuffer(raw, dtype="<f4", count=n, offset=n * 12).copy() if with_width else None
     return index, inten, width
 
 
@@ -119,6 +112,7 @@ def decode_profile_block(raw: bytes) -> np.ndarray:
 
 # -- file access ----------------------------------------------------------
 
+
 class BinaryFile:
     """An open ``analysis.tsf_bin``.
 
@@ -136,20 +130,18 @@ class BinaryFile:
             self._f.close()
             self._f = None  # type: ignore[assignment]
 
-    def __enter__(self) -> "BinaryFile":
+    def __enter__(self) -> BinaryFile:
         return self
 
     def __exit__(self, *exc: object) -> None:
         self.close()
 
     def __del__(self) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self.close()
-        except Exception:
-            pass
 
     # -- header --
-    def block_header(self, tims_id: Optional[int]) -> tuple[int, int, int]:
+    def block_header(self, tims_id: int | None) -> tuple[int, int, int]:
         """Return ``(total_size, line_size, profile_size)`` for one block."""
         if tims_id is None or tims_id < 0:
             return (0, 0, 0)
@@ -162,10 +154,7 @@ class BinaryFile:
         # The stricter relation total >= 8 + line_size must hold, because
         # total delimits the profile sub-block.
         if total < 8 or line_size > total - 8:
-            raise TsfBinError(
-                f"corrupt block header at offset {tims_id}: "
-                f"total={total} line={line_size}"
-            )
+            raise TsfBinError(f"corrupt block header at offset {tims_id}: " f"total={total} line={line_size}")
         return (total, line_size, total - 8 - line_size)
 
     def _sub_block(self, tims_id: int, which: str) -> bytes:
@@ -184,17 +173,16 @@ class BinaryFile:
         buf = self._f.read(size)
         if len(buf) != size:
             raise TsfBinError(
-                f"error reading {which} frame data at offset {offset}: "
-                f"wanted {size} bytes, got {len(buf)}"
+                f"error reading {which} frame data at offset {offset}: " f"wanted {size} bytes, got {len(buf)}"
             )
         return buf
 
     # -- reads --
     def read_line_spectrum(
         self,
-        tims_id: Optional[int],
-        num_peaks: Optional[int],
-        want_width: Optional[bool] = None,
+        tims_id: int | None,
+        num_peaks: int | None,
+        want_width: bool | None = None,
     ):
         """Read one line spectrum as ``(index, intensity, width_or_None)``.
 
@@ -209,7 +197,7 @@ class BinaryFile:
             return _empty_line(bool(want_width))
         return decode_line_block(_decompress(raw, "line"), num_peaks, want_width)
 
-    def read_profile_spectrum(self, tims_id: Optional[int]) -> np.ndarray:
+    def read_profile_spectrum(self, tims_id: int | None) -> np.ndarray:
         """Read one profile spectrum as a dense uint32 array (position == index)."""
         if tims_id is None or tims_id < 0:
             return np.empty(0, dtype=np.uint32)
@@ -220,6 +208,7 @@ class BinaryFile:
 
 
 # -- encoding (used by the test suite to build synthetic fixtures) --------
+
 
 def transpose_to_byte_planes(values) -> bytes:
     """uint32 sequence -> the byte-plane layout of a profile sub-block.
@@ -250,9 +239,7 @@ def encode_profile_block(values, level: int = 3) -> bytes:
     return zstd.ZstdCompressor(level=level).compress(transpose_to_byte_planes(values))
 
 
-def encode_spectrum_block(
-    index=(), intensity=(), width=None, profile=None, level: int = 3
-) -> bytes:
+def encode_spectrum_block(index=(), intensity=(), width=None, profile=None, level: int = 3) -> bytes:
     """Build one complete per-spectrum block (8-byte header + both sub-blocks).
 
     ``profile=None`` omits the profile sub-block entirely; ``profile=[]``

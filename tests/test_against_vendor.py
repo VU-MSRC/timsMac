@@ -15,11 +15,13 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import synth  # noqa: E402  (same directory)
 from pytsf import TsfData  # noqa: E402
+
+import synth  # noqa: E402  (same directory)
 
 try:
     from oracle import Oracle, OracleUnavailable
+
     try:
         Oracle()
         HAVE_ORACLE = True
@@ -33,10 +35,12 @@ except ImportError as exc:  # pragma: no cover
 
 needs_oracle = pytest.mark.skipif(not HAVE_ORACLE, reason=SKIP_REASON)
 
-INDICES = np.concatenate([
-    np.array([0.0, 0.5, 1.0, 123.456, 399999.0, 400000.0]),
-    np.linspace(0.0, 400000.0, 257),
-])
+INDICES = np.concatenate(
+    [
+        np.array([0.0, 0.5, 1.0, 123.456, 399999.0, 400000.0]),
+        np.linspace(0.0, 400000.0, 257),
+    ]
+)
 
 
 def _spectra(seed: int = 4242):
@@ -49,11 +53,8 @@ def _spectra(seed: int = 4242):
         width = [rnd.uniform(1e-4, 5.0) for _ in range(n)]
         prof = [0] * plen
         for _ in range(min(plen, 40)):
-            prof[rnd.randrange(plen)] = rnd.choice(
-                [1, 255, 256, 65535, 65536, 16777215, 2 ** 31, 2 ** 32 - 1]
-            )
-        out.append(synth.Spectrum(idx, inten, width, prof,
-                                  gap_before=rnd.randrange(0, 17)))
+            prof[rnd.randrange(plen)] = rnd.choice([1, 255, 256, 65535, 65536, 16777215, 2**31, 2**32 - 1])
+        out.append(synth.Spectrum(idx, inten, width, prof, gap_before=rnd.randrange(0, 17)))
     return out
 
 
@@ -64,6 +65,7 @@ def dataset(tmp_path_factory):
 
 
 # -- blob decoding --------------------------------------------------------
+
 
 @needs_oracle
 def test_line_spectra_match_vendor(dataset):
@@ -89,16 +91,17 @@ def test_profile_spectra_match_vendor(dataset):
 # -- calibration ----------------------------------------------------------
 
 CAL_FAMILIES = [
-    ("linear",    synth.Calibration(ml1=1.5e6, ml2=1234.5, ml3=0.0)),
+    ("linear", synth.Calibration(ml1=1.5e6, ml2=1234.5, ml3=0.0)),
     ("quadratic", synth.Calibration(ml1=1.5e6, ml2=1234.5, ml3=-2e-4)),
-    ("shifted",   synth.Calibration(ml1=9.0e5, ml2=-500.0, ml3=1e-4)),
+    ("shifted", synth.Calibration(ml1=9.0e5, ml2=-500.0, ml3=1e-4)),
 ]
 
 
 @pytest.mark.parametrize("name,cal", CAL_FAMILIES, ids=[n for n, _ in CAL_FAMILIES])
 def test_fitted_calibration_recovers_the_published_equation(tmp_path, name, cal):
     """Data synthesised from the published equation must be recovered by the
-    fit to numerical precision -- the fit and the generator are the same model."""
+    fit to numerical precision -- the fit and the generator are the same model.
+    """
     spectra = [synth.Spectrum([1.0], [1.0], [0.1], [0])]
     d = synth.build(str(tmp_path / f"{name}.d"), spectra, calibration=cal)
     with TsfData(d) as tsf:
@@ -124,9 +127,10 @@ def test_fitted_calibration_round_trips(tmp_path, name, cal):
 
 # -- self-consistency (runs without the vendor library) -------------------
 
+
 @pytest.mark.filterwarnings("ignore:.*outside the calibrant range:RuntimeWarning")
 def test_round_trip_without_oracle(dataset):
-    """index -> m/z -> index is stable to well under one digitizer sample."""
+    """Index -> m/z -> index is stable to well under one digitizer sample."""
     with TsfData(dataset) as tsf:
         mz = tsf.index_to_mz(1, INDICES)
         phys = np.isfinite(mz) & (mz > 0)
@@ -159,15 +163,17 @@ def test_metadata(dataset):
 
 def test_maldi_table_accessible(tmp_path):
     """Files from MALDI imaging runs carry a MaldiFrameInfo table that is not
-    part of the documented core schema; it must still be readable."""
+    part of the documented core schema; it must still be readable.
+    """
     import sqlite3
+
     spectra = [synth.Spectrum([1.0], [1.0], [0.1], [0])]
     d = synth.build(str(tmp_path / "maldi.d"), spectra)
     con = sqlite3.connect(d + "/analysis.tsf")
-    con.execute("CREATE TABLE MaldiFrameInfo (Frame INTEGER, SpotName TEXT, "
-                "XIndexPos INTEGER, YIndexPos INTEGER)")
+    con.execute("CREATE TABLE MaldiFrameInfo (Frame INTEGER, SpotName TEXT, " "XIndexPos INTEGER, YIndexPos INTEGER)")
     con.execute("INSERT INTO MaldiFrameInfo VALUES (1,'A1',3,7)")
-    con.commit(); con.close()
+    con.commit()
+    con.close()
     with TsfData(d) as tsf:
         assert tsf.meta.is_maldi
         rows = tsf.meta.table("MaldiFrameInfo")
@@ -177,6 +183,7 @@ def test_maldi_table_accessible(tmp_path):
 
 # -- the fitted calibration -----------------------------------------------
 
+
 def test_calibration_is_fitted_from_the_file(dataset):
     with TsfData(dataset) as tsf:
         assert tsf.calibration.ref_mz.size >= 3
@@ -184,11 +191,15 @@ def test_calibration_is_fitted_from_the_file(dataset):
 
 def test_fails_loudly_without_calibration_points(tmp_path):
     """With no calibration points in the file there is no way to compute m/z;
-    the reader must say so at open time rather than guess."""
+    the reader must say so at open time rather than guess.
+    """
     from pytsf.calibration_fitted import CalibrationPointsUnavailable
-    d = synth.build(str(tmp_path / "nopoints.d"),
-                    [synth.Spectrum([1.0], [1.0], [0.1], [0])],
-                    reference_points=False)
+
+    d = synth.build(
+        str(tmp_path / "nopoints.d"),
+        [synth.Spectrum([1.0], [1.0], [0.1], [0])],
+        reference_points=False,
+    )
     with pytest.raises(CalibrationPointsUnavailable):
         TsfData(d)
 
@@ -196,9 +207,13 @@ def test_fails_loudly_without_calibration_points(tmp_path):
 def test_fitted_calibration_warns_outside_calibrant_range(tmp_path):
     """Accuracy degrades when extrapolating beyond the calibrant; warn."""
     from pytsf.calibration_fitted import FittedCalibration
+
     cal = synth.Calibration()
-    d = synth.build(str(tmp_path / "warn.d"),
-                    [synth.Spectrum([1.0], [1.0], [0.1], [0])], calibration=cal)
+    d = synth.build(
+        str(tmp_path / "warn.d"),
+        [synth.Spectrum([1.0], [1.0], [0.1], [0])],
+        calibration=cal,
+    )
     fitted = FittedCalibration(d + "/analysis.tsf")
     with pytest.warns(RuntimeWarning, match="outside the calibrant range"):
         fitted.index_to_mz(cal.mz_to_index(np.array([120.0, 900.0])))

@@ -15,9 +15,18 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, os.path.dirname(__file__))
+from pytsf import (
+    MobilityCalibration,
+    TdfData,
+    TsfError,
+    ccs_to_oneoverk0,
+    oneoverk0_to_ccs,
+)
+
+# noqa: E402
+from pytsf.tdf_bin import TdfBinError, decode_frame_payload, encode_frame_payload  # noqa: E402
+
 import synth  # noqa: E402
-from pytsf import TdfData, TsfError, MobilityCalibration, oneoverk0_to_ccs, ccs_to_oneoverk0  # noqa: E402
-from pytsf.tdf_bin import decode_frame_payload, encode_frame_payload, TdfBinError  # noqa: E402
 from test_against_vendor import HAVE_ORACLE, SKIP_REASON  # noqa: E402
 
 if HAVE_ORACLE:
@@ -28,8 +37,13 @@ needs_oracle = pytest.mark.skipif(not HAVE_ORACLE, reason=SKIP_REASON)
 NUM_SCANS = 500
 # a synthetic "tune mix": (name, m/z, 1/K0) -- values are arbitrary but
 # monotone the way a real calibrant is
-REFERENCE = [("a", 322.0481, 0.7363), ("b", 622.0290, 0.9915),
-             ("c", 922.0098, 1.1986), ("d", 1221.9906, 1.3934), ("e", 1521.9715, 1.5685)]
+REFERENCE = [
+    ("a", 322.0481, 0.7363),
+    ("b", 622.0290, 0.9915),
+    ("c", 922.0098, 1.1986),
+    ("d", 1221.9906, 1.3934),
+    ("e", 1521.9715, 1.5685),
+]
 
 
 def _frames(seed=7):
@@ -39,12 +53,19 @@ def _frames(seed=7):
     for n in (50, 5, 4000, 0):
         scan = rnd.integers(0, NUM_SCANS, n)
         mz = rnd.uniform(150, 1650, n)
-        inten = rnd.integers(1, 2 ** 20, n)
+        inten = rnd.integers(1, 2**20, n)
         out.append(synth.TdfFrameSpec(scan, mz, inten))
     # a PASEF MS/MS frame with a PasefFrameMsMsInfo row
     scan = rnd.integers(100, 300, 30)
-    out.append(synth.TdfFrameSpec(scan, rnd.uniform(150, 900, 30), rnd.integers(1, 1000, 30),
-                                  msms_type=8, pasef=[(100, 300, 622.03, 2.0, 30.0, 1)]))
+    out.append(
+        synth.TdfFrameSpec(
+            scan,
+            rnd.uniform(150, 900, 30),
+            rnd.integers(1, 1000, 30),
+            msms_type=8,
+            pasef=[(100, 300, 622.03, 2.0, 30.0, 1)],
+        )
+    )
     return out
 
 
@@ -61,17 +82,25 @@ def blank(tmp_path_factory):
     frames = _frames(seed=11)[:3]
     synth.build_tdf(str(d), frames, num_scans=NUM_SCANS, reference_ions=None)
     # record the calibrant in CalibrationInfo without writing its peaks
-    import sqlite3, struct
+    import sqlite3
+    import struct
+
     con = sqlite3.connect(os.path.join(str(d), "analysis.tdf"))
-    con.execute("INSERT INTO CalibrationInfo VALUES ('+','ReferenceMobilityPeakNames',?)",
-                (b"".join(n.encode() + b"\x00" for n, _, _ in REFERENCE),))
-    con.execute("INSERT INTO CalibrationInfo VALUES ('+','ReferencePeakMobilities',?)",
-                (struct.pack("<5d", *[k for _, _, k in REFERENCE]),))
-    con.commit(); con.close()
+    con.execute(
+        "INSERT INTO CalibrationInfo VALUES ('+','ReferenceMobilityPeakNames',?)",
+        (b"".join(n.encode() + b"\x00" for n, _, _ in REFERENCE),),
+    )
+    con.execute(
+        "INSERT INTO CalibrationInfo VALUES ('+','ReferencePeakMobilities',?)",
+        (struct.pack("<5d", *[k for _, _, k in REFERENCE]),),
+    )
+    con.commit()
+    con.close()
     return str(d)
 
 
 # -- frame decoding ----------------------------------------------------------
+
 
 def test_encode_decode_round_trip():
     rnd = np.random.default_rng(1)
@@ -81,9 +110,10 @@ def test_encode_decode_round_trip():
     for s in np.unique(scan):
         m = scan == s
         tof[m] = np.sort(rnd.choice(400000, m.sum(), replace=False))
-    inten = rnd.integers(0, 2 ** 32, n, dtype=np.uint64).astype(np.uint32)
+    inten = rnd.integers(0, 2**32, n, dtype=np.uint64).astype(np.uint32)
     blk = encode_frame_payload(64, scan, tof, inten)
     import zstandard
+
     fr = decode_frame_payload(zstandard.ZstdDecompressor().decompress(blk[8:]))
     assert fr.num_scans == 64
     np.testing.assert_array_equal(fr.scan, scan)
@@ -95,7 +125,7 @@ def test_decoder_rejects_garbage():
     with pytest.raises(TdfBinError):
         decode_frame_payload(b"\x01\x02\x03")
     with pytest.raises(TdfBinError):
-        decode_frame_payload(bytes(4 * 3))   # scan_count 0
+        decode_frame_payload(bytes(4 * 3))  # scan_count 0
 
 
 @needs_oracle
@@ -117,7 +147,8 @@ def test_mz_axis_recovers_the_published_equation(dataset):
     """The synthetic file was written with the OpenMS/Gobom equation at known
     coefficients; the fitted calibration must reproduce it inside the
     calibrant range. (The vendor library is not consulted for m/z: the
-    synthetic MzCalibration row holds inert placeholders.)"""
+    synthetic MzCalibration row holds inert placeholders.).
+    """
     cal = synth.Calibration()
     with TdfData(dataset) as tdf:
         mz = np.linspace(tdf.calibration.mz_min, tdf.calibration.mz_max, 501)
@@ -131,9 +162,10 @@ def test_mz_axis_recovers_the_published_equation(dataset):
 
 # -- mobility --------------------------------------------------------------------
 
+
 def test_reference_ions_are_found_and_calibration_is_linear(dataset):
     with warnings.catch_warnings():
-        warnings.simplefilter("error")   # no fallback warning expected
+        warnings.simplefilter("error")  # no fallback warning expected
         with TdfData(dataset) as tdf:
             assert tdf.mobility_fallback_reason is None
             assert tdf.mobility.method == "reference_ions"
@@ -145,7 +177,7 @@ def test_reference_ions_are_found_and_calibration_is_linear(dataset):
             scans = np.arange(NUM_SCANS)
             truth = hi + (lo - hi) * scans / (NUM_SCANS - 1)
             with warnings.catch_warnings():
-                warnings.simplefilter("ignore")   # extrapolation notice, expected here
+                warnings.simplefilter("ignore")  # extrapolation notice, expected here
                 got = tdf.scan_to_oneoverk0(scans)
             # apexes are integer scans, so expect sub-scan error
             assert np.abs(got - truth).max() < (hi - lo) / NUM_SCANS * 1.5
@@ -201,8 +233,10 @@ def test_pasef_tables(dataset):
 
 # -- CCS -----------------------------------------------------------------------
 
+
 def test_ccs_round_trip():
-    k0 = np.array([0.8, 1.0, 1.4]); mz = np.array([400.0, 622.0, 1200.0])
+    k0 = np.array([0.8, 1.0, 1.4])
+    mz = np.array([400.0, 622.0, 1200.0])
     ccs = oneoverk0_to_ccs(k0, mz, charge=1)
     np.testing.assert_allclose(ccs_to_oneoverk0(ccs, mz, charge=1), k0, rtol=1e-12)
     # Mason-Schamp: CCS grows with 1/K0 and with charge
@@ -212,6 +246,11 @@ def test_ccs_round_trip():
 
 @needs_oracle
 def test_ccs_matches_vendor():
-    for k0, z, mz in [(0.7363, 1, 322.0481), (0.9915, 1, 622.029), (1.3934, 1, 1221.9906), (1.1, 2, 900.0)]:
+    for k0, z, mz in [
+        (0.7363, 1, 322.0481),
+        (0.9915, 1, 622.029),
+        (1.3934, 1, 1221.9906),
+        (1.1, 2, 900.0),
+    ]:
         with TdfOracle() as oracle:
             assert oneoverk0_to_ccs(k0, mz, z) == pytest.approx(oracle.oneoverk0_to_ccs(k0, z, mz), rel=1e-6)

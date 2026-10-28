@@ -50,9 +50,9 @@ import warnings
 
 import numpy as np
 
-from .meta import TsfError
+from pytsf.meta import TsfError
 
-__all__ = ["FittedCalibration", "CalibrationPointsUnavailable"]
+__all__ = ["CalibrationPointsUnavailable", "FittedCalibration"]
 
 SCALE = 1e12
 
@@ -63,12 +63,10 @@ class CalibrationPointsUnavailable(TsfError):
 
 def _doubles(b) -> np.ndarray:
     if not isinstance(b, (bytes, bytearray, memoryview)):
-        raise CalibrationPointsUnavailable(
-            "Calibration point data is not a binary array.")
+        raise CalibrationPointsUnavailable("Calibration point data is not a binary array.")
     b = bytes(b)
     if len(b) < 8 or len(b) % 8:
-        raise CalibrationPointsUnavailable(
-            f"Calibration point blob has unusable length {len(b)}.")
+        raise CalibrationPointsUnavailable(f"Calibration point blob has unusable length {len(b)}.")
     return np.array(struct.unpack(f"<{len(b) // 8}d", b))
 
 
@@ -86,8 +84,7 @@ class FittedCalibration:
         span of the calibrant masses, where accuracy degrades.
     """
 
-    def __init__(self, sqlite_path: str, order: int = 3,
-                 warn_outside_range: bool = True):
+    def __init__(self, sqlite_path: str, order: int = 3, warn_outside_range: bool = True):
         if order not in (2, 3, 4):
             raise ValueError("order must be 2, 3 or 4")
         self.order = order
@@ -95,8 +92,7 @@ class FittedCalibration:
         self._warned = False
         self._axis_cache: dict[int, np.ndarray] = {}
 
-        uri = ("file:" + str(sqlite_path).replace("?", "%3f").replace("#", "%23")
-               + "?mode=ro")
+        uri = "file:" + str(sqlite_path).replace("?", "%3f").replace("#", "%23") + "?mode=ro"
         con = sqlite3.connect(uri, uri=True)
         try:
             self._load(con)
@@ -110,22 +106,22 @@ class FittedCalibration:
         # One fit covers the whole analysis, so the analysis must be
         # single-polarity and reference a single calibration row. Refuse
         # anything else rather than silently applying one calibration to all.
-        polarities = [r[0] for r in con.execute(
-            "SELECT DISTINCT Polarity FROM Frames")]
+        polarities = [r[0] for r in con.execute("SELECT DISTINCT Polarity FROM Frames")]
         if len(polarities) > 1:
             raise TsfError(
                 f"Analysis contains spectra of both polarities {polarities}; "
                 "this reader fits one calibration per analysis and does not "
-                "support mixed-polarity files.")
+                "support mixed-polarity files."
+            )
         polarity = polarities[0] if polarities else None
 
-        ncal = con.execute(
-            "SELECT COUNT(DISTINCT MzCalibration) FROM Frames").fetchone()[0]
+        ncal = con.execute("SELECT COUNT(DISTINCT MzCalibration) FROM Frames").fetchone()[0]
         if ncal > 1:
             raise TsfError(
                 f"Spectra reference {ncal} different MzCalibration rows; this "
                 "reader fits one calibration per analysis and does not support "
-                "that.")
+                "that."
+            )
 
         def info(key: str):
             # Prefer the row for this analysis's polarity; accept a row with
@@ -135,25 +131,24 @@ class FittedCalibration:
                     "SELECT Value FROM CalibrationInfo WHERE KeyName=? AND "
                     "(KeyPolarity=? OR KeyPolarity IS NULL) "
                     "ORDER BY KeyPolarity IS NULL",
-                    (key, polarity)).fetchone()
+                    (key, polarity),
+                ).fetchone()
             else:
-                row = con.execute(
-                    "SELECT Value FROM CalibrationInfo WHERE KeyName=?",
-                    (key,)).fetchone()
+                row = con.execute("SELECT Value FROM CalibrationInfo WHERE KeyName=?", (key,)).fetchone()
             return row[0] if row else None
 
         try:
             masses = info("ReferencePeakMasses")
             tofs = info("MeasuredTimesOfFlight")
         except sqlite3.Error as exc:
-            raise CalibrationPointsUnavailable(
-                f"Cannot read CalibrationInfo: {exc}") from exc
+            raise CalibrationPointsUnavailable(f"Cannot read CalibrationInfo: {exc}") from exc
 
         if masses is None or tofs is None:
             raise CalibrationPointsUnavailable(
                 "This analysis records no ReferencePeakMasses / "
                 "MeasuredTimesOfFlight in CalibrationInfo, so the calibration "
-                "cannot be fitted from the file and m/z cannot be computed.")
+                "cannot be fitted from the file and m/z cannot be computed."
+            )
 
         ref_mz = _doubles(masses)
         ref_t = _doubles(tofs)
@@ -165,7 +160,8 @@ class FittedCalibration:
         if self.ref_mz.size < self.order:
             raise CalibrationPointsUnavailable(
                 f"Only {self.ref_mz.size} usable calibration points; order "
-                f"{self.order} needs at least {self.order}.")
+                f"{self.order} needs at least {self.order}."
+            )
 
         row = con.execute(
             "SELECT DigitizerTimebase, DigitizerDelay FROM MzCalibration "
@@ -196,7 +192,7 @@ class FittedCalibration:
         slope, intercept = np.linalg.lstsq(A, t, rcond=None)[0]
         if slope <= 0:
             raise TsfError("Calibration points are not physically ordered.")
-        p = np.array([SCALE / slope ** 2, intercept, 0.0, 0.0][:self.order])
+        p = np.array([SCALE / slope**2, intercept, 0.0, 0.0][: self.order])
 
         # Gauss-Newton with a numeric Jacobian; 2-4 parameters, converges fast.
         for _ in range(100):
@@ -222,7 +218,7 @@ class FittedCalibration:
 
         fitted = self.mz_from_time(t)
         rel = (fitted - m) / m
-        self.fit_rms_ppm = float(np.sqrt(np.mean(rel ** 2)) * 1e6)
+        self.fit_rms_ppm = float(np.sqrt(np.mean(rel**2)) * 1e6)
         self.fit_max_ppm = float(np.max(np.abs(rel)) * 1e6)
         self.mz_min = float(self.ref_mz.min())
         self.mz_max = float(self.ref_mz.max())
@@ -256,8 +252,7 @@ class FittedCalibration:
         for _ in range(60):
             f = self._forward(self.params, m) - tv
             h = np.maximum(np.abs(m) * 1e-7, 1e-10)
-            fp = (self._forward(self.params, m + h)
-                  - self._forward(self.params, m - h)) / (2.0 * h)
+            fp = (self._forward(self.params, m + h) - self._forward(self.params, m - h)) / (2.0 * h)
             with np.errstate(divide="ignore", invalid="ignore"):
                 step = np.where(fp != 0.0, f / fp, 0.0)
             m_new = m - step
@@ -284,13 +279,16 @@ class FittedCalibration:
                 hi = self.mz_max * (1.0 + 1e-9)
                 out = (mz[finite] < lo) | (mz[finite] > hi)
                 if out.any():
-                    self._warned = True   # once per calibration, not per call
+                    self._warned = True  # once per calibration, not per call
                     warnings.warn(
                         f"values outside the calibrant range "
                         f"({self.mz_min:.1f}-{self.mz_max:.1f} m/z) were converted; "
                         "the fitted calibration extrapolates there and accuracy "
                         "degrades (see calibration_fitted docs). Reported once per "
-                        "calibration.", RuntimeWarning, stacklevel=2)
+                        "calibration.",
+                        RuntimeWarning,
+                        stacklevel=2,
+                    )
         return float(mz[0]) if scalar else mz
 
     def index_axis(self, n: int) -> np.ndarray:
@@ -317,7 +315,9 @@ class FittedCalibration:
         return float(idx[0]) if scalar else idx
 
     def __repr__(self) -> str:
-        return (f"FittedCalibration(order={self.order}, "
-                f"points={self.ref_mz.size}, "
-                f"range={self.mz_min:.1f}-{self.mz_max:.1f}, "
-                f"fit_rms={self.fit_rms_ppm:.3f}ppm)")
+        return (
+            f"FittedCalibration(order={self.order}, "
+            f"points={self.ref_mz.size}, "
+            f"range={self.mz_min:.1f}-{self.mz_max:.1f}, "
+            f"fit_rms={self.fit_rms_ppm:.3f}ppm)"
+        )

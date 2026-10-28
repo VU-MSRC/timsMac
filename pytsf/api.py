@@ -18,16 +18,17 @@ alongside the camelCase originals.
 
 from __future__ import annotations
 
+import contextlib
 import os
-from typing import Iterator
+from collections.abc import Iterator
 
 import numpy as np
 
-from . import bin as _bin
-from . import calibration_fitted as _fitted
-from .meta import Frame, TsfError, TsfMetadata
+from pytsf import bin as _bin
+from pytsf import calibration_fitted as _fitted
+from pytsf.meta import Frame, TsfError, TsfMetadata
 
-__all__ = ["TsfData", "TsfError", "Frame"]
+__all__ = ["Frame", "TsfData", "TsfError"]
 
 
 class TsfData:
@@ -96,10 +97,7 @@ class TsfData:
         Use `index_to_mz` to turn the indices into m/z values.
         """
         if not self.meta.has_line_spectra:
-            raise TsfError(
-                "This analysis contains no line spectra "
-                "(GlobalMetadata.HasLineSpectra == 0)."
-            )
+            raise TsfError("This analysis contains no line spectra " "(GlobalMetadata.HasLineSpectra == 0).")
         frame = self.meta.frame(frame_id)
         idx, inten, _ = self._bin.read_line_spectrum(frame.tims_id, frame.num_peaks)
         return idx, inten
@@ -107,28 +105,19 @@ class TsfData:
     def read_line_spectrum_with_width(self, frame_id: int):
         """Centroided spectrum as (index, intensity, width)."""
         if not self.meta.has_line_spectra:
-            raise TsfError(
-                "This analysis contains no line spectra "
-                "(GlobalMetadata.HasLineSpectra == 0)."
-            )
+            raise TsfError("This analysis contains no line spectra " "(GlobalMetadata.HasLineSpectra == 0).")
         if not self.meta.has_line_spectra_peak_width:
-            raise TsfError(
-                "This analysis contains no peak widths "
-                "(GlobalMetadata.HasLineSpectraPeakWidth == 0)."
-            )
+            raise TsfError("This analysis contains no peak widths " "(GlobalMetadata.HasLineSpectraPeakWidth == 0).")
         frame = self.meta.frame(frame_id)
-        return self._bin.read_line_spectrum(frame.tims_id, frame.num_peaks,
-                                            want_width=True)
+        return self._bin.read_line_spectrum(frame.tims_id, frame.num_peaks, want_width=True)
 
     def read_profile_spectrum(self, frame_id: int) -> np.ndarray:
         """Profile spectrum as a dense uint32 intensity array; the position in
         the array is the index (so `index_to_mz(frame_id, arange(len(a)))`
-        gives the m/z axis)."""
+        gives the m/z axis).
+        """
         if not self.meta.has_profile_spectra:
-            raise TsfError(
-                "This analysis contains no profile spectra "
-                "(GlobalMetadata.HasProfileSpectra == 0)."
-            )
+            raise TsfError("This analysis contains no profile spectra " "(GlobalMetadata.HasProfileSpectra == 0).")
         frame = self.meta.frame(frame_id)
         return self._bin.read_profile_spectrum(frame.tims_id)
 
@@ -169,14 +158,12 @@ class TsfData:
         if getattr(self, "meta", None) is not None:
             self.meta.close()
 
-    def __enter__(self) -> "TsfData":
+    def __enter__(self) -> TsfData:
         return self
 
     def __exit__(self, *exc: object) -> None:
         self.close()
 
     def __del__(self) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self.close()
-        except Exception:
-            pass

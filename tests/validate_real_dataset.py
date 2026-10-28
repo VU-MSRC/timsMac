@@ -24,13 +24,14 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from oracle import Oracle  # noqa: E402
 from pytsf import TsfData  # noqa: E402
+
+from oracle import Oracle  # noqa: E402
 
 # m/z is computed independently from the published equation, not copied from
 # the vendor, so agreement is of order 1 ppm rather than exact.
-MZ_REL_TOL = 5e-6      # 5 ppm
-IDX_ABS_TOL = 50.0     # digitizer samples
+MZ_REL_TOL = 5e-6  # 5 ppm
+IDX_ABS_TOL = 50.0  # digitizer samples
 
 
 def main(argv: list[str]) -> int:
@@ -40,8 +41,7 @@ def main(argv: list[str]) -> int:
     d = argv[1]
     limit = int(argv[2]) if len(argv) > 2 else 0
 
-    fails = {k: 0 for k in
-             ("line_index", "line_intensity", "width", "profile", "mz", "index")}
+    fails = dict.fromkeys(("line_index", "line_intensity", "width", "profile", "mz", "index"), 0)
     worst_mz = 0.0
     worst_idx = 0.0
     worst_out = 0.0
@@ -54,13 +54,17 @@ def main(argv: list[str]) -> int:
 
         print(f"{d}")
         print(f"  spectra            : {len(tsf)}")
-        print(f"  line / profile     : {meta.has_line_spectra} / "
-              f"{meta.has_profile_spectra}  (widths: "
-              f"{meta.has_line_spectra_peak_width})")
+        print(
+            f"  line / profile     : {meta.has_line_spectra} / "
+            f"{meta.has_profile_spectra}  (widths: "
+            f"{meta.has_line_spectra_peak_width})"
+        )
         print(f"  MALDI imaging      : {meta.is_maldi}")
-        print(f"  instrument         : "
-              f"{meta.global_metadata.get('InstrumentName')!r} "
-              f"{meta.global_metadata.get('AcquisitionSoftwareVersion')!r}")
+        print(
+            f"  instrument         : "
+            f"{meta.global_metadata.get('InstrumentName')!r} "
+            f"{meta.global_metadata.get('AcquisitionSoftwareVersion')!r}"
+        )
         print(f"  calibration        : {tsf.calibration}")
         print()
 
@@ -91,8 +95,10 @@ def main(argv: list[str]) -> int:
                 m = ok & (tmz >= lo) & (tmz <= hi)
                 out = ok & ~m
                 if out.any():
-                    worst_out = max(worst_out, float(np.max(
-                        np.abs((omz[out] - tmz[out]) / tmz[out]))))
+                    worst_out = max(
+                        worst_out,
+                        float(np.max(np.abs((omz[out] - tmz[out]) / tmz[out]))),
+                    )
                 if m.any():
                     rel = float(np.max(np.abs((omz[m] - tmz[m]) / tmz[m])))
                     worst_mz = max(worst_mz, rel)
@@ -122,17 +128,19 @@ def main(argv: list[str]) -> int:
         print(f"mismatched {k:<21}: {v}")
     print(f"max m/z error, in calibrant range : {worst_mz * 1e6:8.2f} ppm")
     if worst_out:
-        print(f"max m/z error, extrapolated       : {worst_out * 1e6:8.2f} ppm "
-              "(expected: external calibration)")
+        print(f"max m/z error, extrapolated       : {worst_out * 1e6:8.2f} ppm " "(expected: external calibration)")
     print(f"max index abs error     : {worst_idx:.3e} samples")
     print(f"elapsed                 : {time.time() - t0:.1f}s")
 
     bad = sum(fails.values())
     print()
-    print("FAILED" if bad else
-          "OK -- spectra decode identically; m/z agrees within tolerance\n"
-          "     (computed independently from the published equation, not the\n"
-          "      vendor's algorithm -- see PROVENANCE.md)")
+    print(
+        "FAILED"
+        if bad
+        else "OK -- spectra decode identically; m/z agrees within tolerance\n"
+        "     (computed independently from the published equation, not the\n"
+        "      vendor's algorithm -- see PROVENANCE.md)"
+    )
     return 1 if bad else 0
 
 

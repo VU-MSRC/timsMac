@@ -17,6 +17,103 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=7"]
+dev = ["pytsf[test]", "ruff"]
 
 [tool.setuptools.packages.find]
 include = ["pytsf*"]
+
+# https://github.com/charliermarsh/ruff
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+src = ["pytsf", "tests"]
+fix = true
+unsafe-fixes = true
+
+# https://beta.ruff.rs/docs/rules/
+[tool.ruff.lint]
+preview = true
+select = [
+    "F",    # Pyflakes
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "UP", # pyupgrade
+    "I", # isort
+    "S", # flake8-bandit
+    "D", # pydocstyle
+    "YTT", #flake8-2020
+#    "TC", # flake8-type-checing
+    "BLE", # flake8-blind-exception
+    "B", # flake8-bugbear
+    "A", # flake8-builtins
+    "C4", # flake8-comprehensions
+    "ISC", # flake8-implicit-str-concat
+    "G", # flake8-logging-format
+    "PIE", # flake8-pie
+    "COM", # flake8-commas
+    "SIM",  # Common simplification rules
+    "INP", # flake8-no-pep420
+    "PYI", # flake8-pyi
+    "Q", # flake8-quotes
+    "RSE", # flake8-raise
+    "RET", # flake8-return
+    "TID",  # flake8-tidy-imports # replace absolutify import
+    "TRY", # tryceratops
+    "ICN", # flake8-import-conventions
+    "RUF", # ruff specyfic rules
+    "ASYNC", # flake8-async
+    "EXE", # flake8-executable
+    "FA", # flake8-future-annotations
+    "LOG", # flake8-logging
+    "SLOT", # flake8-slots
+    "FURB", # refurb
+]
+
+# I do this to get numpy-style docstrings AND retain
+# D417 (Missing argument descriptions in the docstring)
+# otherwise, see:
+# https://beta.ruff.rs/docs/faq/#does-ruff-support-numpy-or-google-style-docstrings
+# https://github.com/charliermarsh/ruff/issues/2606
+extend-ignore = [
+    "A003", # flake8-builtins - we have class attributes violating these rule
+    "B028", # need to be fixed
+    "D100", # Missing docstring in public module
+    "D107", # Missing docstring in __init__
+    "D203", # 1 blank line required before class docstring
+    "D212", # Multi-line docstring summary should start at the first line
+    "D213", # Multi-line docstring summary should start at the second line
+    "D401", # First line should be in imperative mood
+    "D413", # Missing blank line after last section
+    "D416", # Section name should end with a colon
+    "D301", # Use r""" if any backslashes in a docstring
+    "C901", # Function is too complex
+    "E501",
+    "W191",
+    "Q000",
+    "Q001",
+    "Q002",
+    "Q003",
+    "G004", # flake8-logging-format
+    "FA100",
+    "FA102",  # missing __future__
+    "ISC001", # https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
+    "RUF005", # problem with numpy compatybility, see https://github.com/charliermarsh/ruff/issues/2142#issuecomment-1451038741
+#    "RUF067", # module should only contain docstrings
+    "RUF100", # Do not remove NOQA lines
+    "COM812", # flake8-commas - we don't like adding comma on single line of arguments
+    "COM819", # conflicts with ruff-format
+    "COM812", # Missing trailing comma in a list or tuple
+    "SIM117", # flake8-simplify - we some of merged with statements are not looking great with black, reanble after drop python 3.9
+    "RET504", # not fixed yet https://github.com/charliermarsh/ruff/issues/2950
+    "PYI015", # it produces bad looking files (@jni opinion)
+    "ISC001", # Implicit string concatenation detected
+    "TRY003", # tryceratops - avoid specifying long messages outside the exception class
+]
+
+[tool.ruff.lint.flake8-tidy-imports]
+# Disallow all relative imports.
+ban-relative-imports = "all"
+
+# https://docs.astral.sh/ruff/formatter/
+[tool.ruff.format]
+docstring-code-format = true

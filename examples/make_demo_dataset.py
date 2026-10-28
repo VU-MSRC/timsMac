@@ -31,9 +31,11 @@ SCALE = 1e12
 
 def published_mz_to_time(ml1, ml2, ml3, m):
     """The published three-point TOF equation (OpenMS TOFCalibration; Gobom et
-    al., Anal. Chem. 2002, 74(15), 3915-3923)."""
+    al., Anal. Chem. 2002, 74(15), 3915-3923).
+    """
     m = np.asarray(m, dtype=float)
     return ml2 + np.sqrt(SCALE / ml1 * m) + ml3 * m
+
 
 SCHEMA = """
 CREATE TABLE GlobalMetadata (Key TEXT PRIMARY KEY, Value TEXT);
@@ -62,8 +64,7 @@ CREATE TABLE CalibrationInfo (
 """
 
 # A plausible synthetic calibration, in the published equation's own terms.
-CAL = dict(timebase=0.125, delay=44000.0,
-           ml1=152000.0, ml2=44000.0 + 18000.0, ml3=-4.0e-4)
+CAL = {"timebase": 0.125, "delay": 44000.0, "ml1": 152000.0, "ml2": 44000.0 + 18000.0, "ml3": -4.0e-4}
 
 WIDTH, HEIGHT = 48, 32
 NUM_SAMPLES = 900000
@@ -77,8 +78,9 @@ def spatial_patterns(w: int, h: int) -> dict[float, np.ndarray]:
     # a diagonal gradient
     grad = 0.25 + 0.75 * (xn + yn) / 2.0
     # two blobs
-    blobs = (np.exp(-(((xn - 0.3) ** 2 + (yn - 0.35) ** 2) / 0.012))
-             + np.exp(-(((xn - 0.72) ** 2 + (yn - 0.65) ** 2) / 0.008)))
+    blobs = np.exp(-(((xn - 0.3) ** 2 + (yn - 0.35) ** 2) / 0.012)) + np.exp(
+        -(((xn - 0.72) ** 2 + (yn - 0.65) ** 2) / 0.008)
+    )
     blobs = 0.1 + 0.9 * blobs / blobs.max()
     # a ring
     r = np.sqrt((xn - 0.5) ** 2 + (yn - 0.5) ** 2)
@@ -95,6 +97,7 @@ def main(argv: list[str]) -> int:
     os.makedirs(out)
 
     rng = np.random.default_rng(20260219)
+
     def mz_to_index(m):
         t = published_mz_to_time(CAL["ml1"], CAL["ml2"], CAL["ml3"], m)
         return (t - CAL["delay"]) / CAL["timebase"]
@@ -113,8 +116,7 @@ def main(argv: list[str]) -> int:
             ints = list(rng.uniform(40, 160, background_mz.size))
             for mz, pat in patterns.items():
                 mzs.append(mz + rng.normal(0, 0.002))
-                ints.append(120.0 + 1500.0 * float(pat[y, x])
-                            * rng.uniform(0.85, 1.15))
+                ints.append(120.0 + 1500.0 * float(pat[y, x]) * rng.uniform(0.85, 1.15))
             order = np.argsort(mzs)
             mzs = np.asarray(mzs)[order]
             ints = np.round(np.asarray(ints)[order])
@@ -123,61 +125,85 @@ def main(argv: list[str]) -> int:
             offset = len(blob)
             blob += encode_spectrum_block(idx, ints, None, None)
 
-            frames.append((fid, fid * 0.05, offset, int(ints.max()),
-                           int(ints.sum()), len(idx)))
-            maldi.append((fid, 0, f"R00X{x:03d}Y{y:03d}", 0, x + 1, y + 1,
-                          30.0, 100, 10000.0, 20.0 * x, -20.0 * y, 0.0))
+            frames.append((fid, fid * 0.05, offset, int(ints.max()), int(ints.sum()), len(idx)))
+            maldi.append(
+                (
+                    fid,
+                    0,
+                    f"R00X{x:03d}Y{y:03d}",
+                    0,
+                    x + 1,
+                    y + 1,
+                    30.0,
+                    100,
+                    10000.0,
+                    20.0 * x,
+                    -20.0 * y,
+                    0.0,
+                )
+            )
 
     with open(os.path.join(out, "analysis.tsf_bin"), "wb") as f:
         f.write(bytes(blob))
 
     con = sqlite3.connect(os.path.join(out, "analysis.tsf"))
     con.executescript(SCHEMA)
-    con.executemany("INSERT INTO GlobalMetadata VALUES (?,?)", {
-        "SchemaType": "TSF", "SchemaVersionMajor": "3", "SchemaVersionMinor": "4",
-        "TimsCompressionType": "3", "DigitizerNumSamples": str(NUM_SAMPLES),
-        "HasLineSpectra": "1", "HasProfileSpectra": "0",
-        "HasLineSpectraPeakWidth": "0",
-        "MzAcqRangeLower": "300.000000", "MzAcqRangeUpper": "1000.000000",
-        "AcquisitionSoftware": "pytsf-demo", "AcquisitionSoftwareVersion": "0",
-        "InstrumentName": "synthetic", "MaldiApplicationType": "Imaging",
-    }.items())
+    con.executemany(
+        "INSERT INTO GlobalMetadata VALUES (?,?)",
+        {
+            "SchemaType": "TSF",
+            "SchemaVersionMajor": "3",
+            "SchemaVersionMinor": "4",
+            "TimsCompressionType": "3",
+            "DigitizerNumSamples": str(NUM_SAMPLES),
+            "HasLineSpectra": "1",
+            "HasProfileSpectra": "0",
+            "HasLineSpectraPeakWidth": "0",
+            "MzAcqRangeLower": "300.000000",
+            "MzAcqRangeUpper": "1000.000000",
+            "AcquisitionSoftware": "pytsf-demo",
+            "AcquisitionSoftwareVersion": "0",
+            "InstrumentName": "synthetic",
+            "MaldiApplicationType": "Imaging",
+        }.items(),
+    )
     con.execute(
         "INSERT INTO MzCalibration (Id,ModelType,DigitizerTimebase,"
         "DigitizerDelay,T1,T2,dC1,dC2,C0,C1,C2,C3,C4,C5,C6,C7) "
         "VALUES (1,1,?,?,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0)",
-        (CAL["timebase"], CAL["delay"]))
+        (CAL["timebase"], CAL["delay"]),
+    )
     con.executemany(
         "INSERT INTO Frames (Id,Time,Polarity,ScanMode,MsMsType,TimsId,"
         "MaxIntensity,SummedIntensities,NumPeaks,MzCalibration,T1,T2,"
         "PropertyGroup) VALUES (?,?,'+',20,0,?,?,?,?,1,?,?,NULL)",
-        [(f[0], f[1], f[2], f[3], f[4], f[5], 25.5, 23.0) for f in frames])
-    con.executemany(
-        "INSERT INTO MaldiFrameInfo VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", maldi)
+        [(f[0], f[1], f[2], f[3], f[4], f[5], 25.5, 23.0) for f in frames],
+    )
+    con.executemany("INSERT INTO MaldiFrameInfo VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", maldi)
     # Reference calibration points, as a real acquisition records them: the
     # known calibrant masses and the flight times they were measured at. pytsf
     # fits the published TOF equation to these, so the demo exercises the same
     # path as real data. The range brackets every demo peak with margin.
     import struct
+
     ref_mz = np.array([310.0, 400.0, 500.0, 650.0, 800.0, 920.0])
     ref_t = published_mz_to_time(CAL["ml1"], CAL["ml2"], CAL["ml3"], ref_mz)
-    con.executemany("INSERT INTO CalibrationInfo VALUES (?,?,?)", [
-        ("+", "CalibrationSoftware", "pytsf-demo"),
-        ("+", "MzStandardDeviationPPM", "0.5"),
-        ("+", "ReferenceMassList", "synthetic-demo"),
-        ("+", "ReferencePeakMasses",
-         struct.pack(f"<{ref_mz.size}d", *ref_mz)),
-        ("+", "MeasuredTimesOfFlight",
-         struct.pack(f"<{ref_t.size}d", *ref_t)),
-    ])
+    con.executemany(
+        "INSERT INTO CalibrationInfo VALUES (?,?,?)",
+        [
+            ("+", "CalibrationSoftware", "pytsf-demo"),
+            ("+", "MzStandardDeviationPPM", "0.5"),
+            ("+", "ReferenceMassList", "synthetic-demo"),
+            ("+", "ReferencePeakMasses", struct.pack(f"<{ref_mz.size}d", *ref_mz)),
+            ("+", "MeasuredTimesOfFlight", struct.pack(f"<{ref_t.size}d", *ref_t)),
+        ],
+    )
     con.commit()
     con.close()
 
     size = sum(os.path.getsize(os.path.join(out, f)) for f in os.listdir(out))
-    print(f"wrote {out}: {len(frames)} spectra ({WIDTH}x{HEIGHT}), "
-          f"{size / 1e6:.1f} MB")
-    print(f"synthetic ions with spatial structure: "
-          f"{', '.join(f'{m:.4f}' for m in sorted(patterns))}")
+    print(f"wrote {out}: {len(frames)} spectra ({WIDTH}x{HEIGHT}), " f"{size / 1e6:.1f} MB")
+    print(f"synthetic ions with spatial structure: " f"{', '.join(f'{m:.4f}' for m in sorted(patterns))}")
     return 0
 
 

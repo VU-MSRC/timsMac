@@ -35,13 +35,17 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import zstandard as zstd
 
-__all__ = ["TdfBinError", "TdfBinaryFile", "Frame", "decode_frame_payload",
-           "encode_frame_payload"]
+__all__ = [
+    "Frame",
+    "TdfBinError",
+    "TdfBinaryFile",
+    "decode_frame_payload",
+    "encode_frame_payload",
+]
 
 _HEADER = struct.Struct("<II")
 _DCTX = zstd.ZstdDecompressor()
@@ -64,9 +68,9 @@ class Frame:
     """
 
     num_scans: int
-    scan_offsets: np.ndarray    # int64, len num_scans + 1
-    tof_indices: np.ndarray     # uint32
-    intensities: np.ndarray     # uint32
+    scan_offsets: np.ndarray  # int64, len num_scans + 1
+    tof_indices: np.ndarray  # uint32
+    intensities: np.ndarray  # uint32
 
     @property
     def scan(self) -> np.ndarray:
@@ -109,7 +113,7 @@ def decode_frame_payload(raw: bytes) -> Frame:
     if scan_offsets[scan_count - 1] > peak_count:
         raise TdfBinError("scan sizes exceed the peak count")
 
-    pairs = u[scan_count:scan_count + 2 * peak_count].reshape(peak_count, 2)
+    pairs = u[scan_count : scan_count + 2 * peak_count].reshape(peak_count, 2)
     tof_deltas = pairs[:, 0].astype(np.int64)
     intensities = pairs[:, 1].copy()
 
@@ -139,10 +143,13 @@ class TdfBinaryFile:
             self._f.close()
             self._f = None  # type: ignore[assignment]
 
-    def __enter__(self): return self
-    def __exit__(self, *exc): self.close()
+    def __enter__(self):
+        return self
 
-    def read_frame(self, tims_id: Optional[int]) -> Frame:
+    def __exit__(self, *exc):
+        self.close()
+
+    def read_frame(self, tims_id: int | None) -> Frame:
         if tims_id is None or tims_id < 0:
             return Frame(0, np.zeros(1, np.int64), np.empty(0, np.uint32), np.empty(0, np.uint32))
         self._f.seek(tims_id)
@@ -158,8 +165,12 @@ class TdfBinaryFile:
         if len(comp) != byte_count - 8:
             raise TdfBinError(f"short read of frame data at offset {tims_id}")
         if not comp:
-            return Frame(int(_hdr_scans), np.zeros(int(_hdr_scans) + 1, np.int64),
-                         np.empty(0, np.uint32), np.empty(0, np.uint32))
+            return Frame(
+                int(_hdr_scans),
+                np.zeros(int(_hdr_scans) + 1, np.int64),
+                np.empty(0, np.uint32),
+                np.empty(0, np.uint32),
+            )
         try:
             raw = _DCTX.decompress(comp)
         except zstd.ZstdError as exc:
@@ -169,8 +180,8 @@ class TdfBinaryFile:
 
 # -- encoder, for tests ---------------------------------------------------
 
-def encode_frame_payload(num_scans: int, scan_of_peak, tof_indices, intensities,
-                         level: int = 3) -> bytes:
+
+def encode_frame_payload(num_scans: int, scan_of_peak, tof_indices, intensities, level: int = 3) -> bytes:
     """Build one complete frame block (header + zstd payload) from peaks.
 
     Peaks must be sorted by scan, then by TOF index within a scan.
@@ -185,15 +196,15 @@ def encode_frame_payload(num_scans: int, scan_of_peak, tof_indices, intensities,
     for s in range(num_scans):
         c = counts[s]
         if c:
-            seg = tof_indices[pos:pos + c]
+            seg = tof_indices[pos : pos + c]
             deltas[pos] = seg[0] + 1
-            deltas[pos + 1:pos + c] = np.diff(seg)
+            deltas[pos + 1 : pos + c] = np.diff(seg)
             pos += c
     u = np.empty(num_scans + 2 * tof_indices.size, dtype=np.uint32)
     u[0] = num_scans
     u[1:num_scans] = (counts[:-1] * 2).astype(np.uint32)
     u[num_scans::2] = deltas.astype(np.uint32)
-    u[num_scans + 1::2] = intensities
+    u[num_scans + 1 :: 2] = intensities
     shuffled = np.frombuffer(u.tobytes(), dtype=np.uint8).reshape(-1, 4).T.tobytes()
     comp = zstd.ZstdCompressor(level=level).compress(shuffled)
     return _HEADER.pack(8 + len(comp), num_scans) + comp

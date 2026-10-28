@@ -40,20 +40,20 @@ physics-based normalisation and uses only a documented column.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sqlite3
 import struct
 import warnings
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Iterator, Optional, Union
 
 import numpy as np
 
-from . import tdf_bin as _bin
-from .calibration_fitted import FittedCalibration
-from .meta import TsfError
-from .mobility import (MobilityCalibration, ccs_to_oneoverk0, find_reference_ions,
-                       oneoverk0_to_ccs)
+from pytsf import tdf_bin as _bin
+from pytsf.calibration_fitted import FittedCalibration
+from pytsf.meta import TsfError
+from pytsf.mobility import MobilityCalibration, ccs_to_oneoverk0, find_reference_ions, oneoverk0_to_ccs
 
 __all__ = ["TdfData", "TdfFrame", "TdfMetadata"]
 
@@ -69,7 +69,7 @@ class TdfFrame:
     polarity: str
     scan_mode: int
     msms_type: int
-    tims_id: Optional[int]
+    tims_id: int | None
     num_scans: int
     num_peaks: int
     max_intensity: int
@@ -98,8 +98,9 @@ class TdfMetadata:
         uri = "file:" + self.sqlite_path.replace("?", "%3f").replace("#", "%23") + "?mode=ro"
         self.conn = sqlite3.connect(uri, uri=True)
         self.conn.row_factory = sqlite3.Row
-        self.global_metadata = {r["Key"]: r["Value"] for r in
-                                self.conn.execute("SELECT Key, Value FROM GlobalMetadata")}
+        self.global_metadata = {
+            r["Key"]: r["Value"] for r in self.conn.execute("SELECT Key, Value FROM GlobalMetadata")
+        }
         st = self.global_metadata.get("SchemaType")
         if st is not None and st.upper() != "TDF":
             raise TsfError(f"Not a TDF analysis: SchemaType={st!r}. Use TsfData for TSF files.")
@@ -107,7 +108,8 @@ class TdfMetadata:
         if ct != TDF_COMPRESSION_TYPE:
             raise TsfError(
                 f"TimsCompressionType {ct} not supported: this reader implements the "
-                f"zstd-based type {TDF_COMPRESSION_TYPE} that current instruments write.")
+                f"zstd-based type {TDF_COMPRESSION_TYPE} that current instruments write."
+            )
         self._frames: dict[int, TdfFrame] = {}
 
     # -- scalar metadata --
@@ -117,14 +119,20 @@ class TdfMetadata:
 
     @property
     def oneoverk0_acq_range(self):
-        return (self._meta_float("OneOverK0AcqRangeLower"), self._meta_float("OneOverK0AcqRangeUpper"))
+        return (
+            self._meta_float("OneOverK0AcqRangeLower"),
+            self._meta_float("OneOverK0AcqRangeUpper"),
+        )
 
     @property
     def mz_acq_range(self):
-        return (self._meta_float("MzAcqRangeLower"), self._meta_float("MzAcqRangeUpper"))
+        return (
+            self._meta_float("MzAcqRangeLower"),
+            self._meta_float("MzAcqRangeUpper"),
+        )
 
     @property
-    def digitizer_num_samples(self) -> Optional[int]:
+    def digitizer_num_samples(self) -> int | None:
         v = self.global_metadata.get("DigitizerNumSamples")
         return int(v) if v is not None else None
 
@@ -144,9 +152,13 @@ class TdfMetadata:
         return self._table_exists("MaldiFrameInfo")
 
     def _table_exists(self, name: str) -> bool:
-        return self.conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name=?", (name,)
-        ).fetchone() is not None
+        return (
+            self.conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name=?",
+                (name,),
+            ).fetchone()
+            is not None
+        )
 
     # -- frames --
     def frame_ids(self) -> list[int]:
@@ -159,12 +171,27 @@ class TdfMetadata:
         r = self.conn.execute(
             "SELECT Id, Time, Polarity, ScanMode, MsMsType, TimsId, NumScans, NumPeaks, "
             "MaxIntensity, SummedIntensities, AccumulationTime, RampTime, MzCalibration, "
-            "TimsCalibration FROM Frames WHERE Id=?", (frame_id,)).fetchone()
+            "TimsCalibration FROM Frames WHERE Id=?",
+            (frame_id,),
+        ).fetchone()
         if r is None:
             raise TsfError(f"No such frame id: {frame_id}")
-        f = TdfFrame(r["Id"], r["Time"], r["Polarity"], r["ScanMode"], r["MsMsType"], r["TimsId"],
-                     r["NumScans"], r["NumPeaks"], r["MaxIntensity"], r["SummedIntensities"],
-                     r["AccumulationTime"], r["RampTime"], r["MzCalibration"], r["TimsCalibration"])
+        f = TdfFrame(
+            r["Id"],
+            r["Time"],
+            r["Polarity"],
+            r["ScanMode"],
+            r["MsMsType"],
+            r["TimsId"],
+            r["NumScans"],
+            r["NumPeaks"],
+            r["MaxIntensity"],
+            r["SummedIntensities"],
+            r["AccumulationTime"],
+            r["RampTime"],
+            r["MzCalibration"],
+            r["TimsCalibration"],
+        )
         self._frames[frame_id] = f
         return f
 
@@ -177,7 +204,7 @@ class TdfMetadata:
             raise TsfError(f"No table or view named {name!r} in this analysis.")
         return list(self.conn.execute(f'SELECT * FROM "{name}"'))
 
-    def pasef_msms_info(self, frame_id: Optional[int] = None) -> list[sqlite3.Row]:
+    def pasef_msms_info(self, frame_id: int | None = None) -> list[sqlite3.Row]:
         """Rows of `PasefFrameMsMsInfo` (scan ranges, isolation, precursor id)."""
         if frame_id is None:
             return self.table("PasefFrameMsMsInfo")
@@ -188,10 +215,16 @@ class TdfMetadata:
 
     def reference_calibrant(self):
         """The calibrant the file records: (names, m/z, 1/K0), or None."""
+
         def info(key):
             r = self.conn.execute("SELECT Value FROM CalibrationInfo WHERE KeyName=?", (key,)).fetchone()
             return r[0] if r else None
-        mz, k0, names = info("ReferencePeakMasses"), info("ReferencePeakMobilities"), info("ReferenceMobilityPeakNames")
+
+        mz, k0, names = (
+            info("ReferencePeakMasses"),
+            info("ReferencePeakMobilities"),
+            info("ReferenceMobilityPeakNames"),
+        )
         if not (isinstance(mz, bytes) and isinstance(k0, bytes)):
             return None
         mzs = struct.unpack(f"<{len(mz) // 8}d", mz)
@@ -205,15 +238,21 @@ class TdfMetadata:
 
     def close(self):
         if getattr(self, "conn", None) is not None:
-            self.conn.close(); self.conn = None  # type: ignore[assignment]
+            self.conn.close()
+            self.conn = None  # type: ignore[assignment]
 
 
 class TdfData:
     """A Bruker `.d` analysis in TDF (ion-mobility) format."""
 
-    def __init__(self, analysis_directory, mobility: Union[str, MobilityCalibration] = "auto",
-                 reference_ppm: float = 15.0, min_reference_ions: int = 3,
-                 reference_quality: Optional[dict] = None):
+    def __init__(
+        self,
+        analysis_directory,
+        mobility: str | MobilityCalibration = "auto",
+        reference_ppm: float = 15.0,
+        min_reference_ions: int = 3,
+        reference_quality: dict | None = None,
+    ):
         """
         reference_quality
             Gates a located reference ion must pass before it is used, as a
@@ -233,8 +272,8 @@ class TdfData:
         self._bin = _bin.TdfBinaryFile(self.meta.binary_path)
         self._cal = FittedCalibration(self.meta.sqlite_path)
         self.reference_ions = []
-        self.mobility_fallback_reason: Optional[str] = None
-        q = dict(max_mz_ppm=2.5, min_snr=50.0, max_fit_residual_percent=1.0)
+        self.mobility_fallback_reason: str | None = None
+        q = {"max_mz_ppm": 2.5, "min_snr": 50.0, "max_fit_residual_percent": 1.0}
         q.update(reference_quality or {})
         self._mob = self._build_mobility(mobility, reference_ppm, min_reference_ions, q)
 
@@ -245,8 +284,7 @@ class TdfData:
         if isinstance(mobility, MobilityCalibration):
             return mobility
         if mobility not in ("auto", "reference_ions", "acquisition_range"):
-            raise TsfError("mobility must be 'auto', 'reference_ions', 'acquisition_range' "
-                           "or a MobilityCalibration")
+            raise TsfError("mobility must be 'auto', 'reference_ions', 'acquisition_range' " "or a MobilityCalibration")
         reason = None
         if mobility in ("auto", "reference_ions"):
             cal = self.meta.reference_calibrant()
@@ -257,24 +295,30 @@ class TdfData:
                 found = find_reference_ions(self, mzs, k0s, names, ppm=ppm)
                 self.reference_ions = found
                 # gate 1: each ion must be a real, correctly identified peak
-                ok = [f for f in found if f.found and f.snr >= q["min_snr"]
-                      and abs(f.mz_error_ppm) <= q["max_mz_ppm"]]
+                ok = [f for f in found if f.found and f.snr >= q["min_snr"] and abs(f.mz_error_ppm) <= q["max_mz_ppm"]]
                 if len(ok) < min_ions:
-                    reason = (f"only {len(ok)} of {len(found)} reference ions pass the "
-                              f"quality gates (S/N >= {q['min_snr']:g}, |m/z error| <= "
-                              f"{q['max_mz_ppm']:g} ppm); need {min_ions}")
+                    reason = (
+                        f"only {len(ok)} of {len(found)} reference ions pass the "
+                        f"quality gates (S/N >= {q['min_snr']:g}, |m/z error| <= "
+                        f"{q['max_mz_ppm']:g} ppm); need {min_ions}"
+                    )
                 else:
                     mob = MobilityCalibration.from_reference_ions(
-                        [f.apex_scan for f in ok], [f.oneoverk0 for f in ok], ns,
-                        reference_ions=ok)
+                        [f.apex_scan for f in ok],
+                        [f.oneoverk0 for f in ok],
+                        ns,
+                        reference_ions=ok,
+                    )
                     # gate 2: the fit must look like a calibration -- 1/K0 falls
                     # with scan number, and the ions lie near one line
                     slope = mob.coefficients[-2]
                     if slope >= 0:
                         reason = "reference-ion apexes do not fall with 1/K0 as TIMS requires"
                     elif mob.fit_residual_percent > q["max_fit_residual_percent"]:
-                        reason = (f"reference-ion fit residual {mob.fit_residual_percent:.2f}% "
-                                  f"exceeds {q['max_fit_residual_percent']:g}%")
+                        reason = (
+                            f"reference-ion fit residual {mob.fit_residual_percent:.2f}% "
+                            f"exceeds {q['max_fit_residual_percent']:g}%"
+                        )
                     else:
                         return mob
             if mobility == "reference_ions":
@@ -283,10 +327,16 @@ class TdfData:
         lo, hi = self.meta.oneoverk0_acq_range
         if lo is None or hi is None:
             raise TsfError("No OneOverK0AcqRange in GlobalMetadata; cannot calibrate mobility.")
-        msg = (f"Falling back to the acquisition-range mobility approximation: {reason}."
-               if reason else "Mobility calibrated from the nominal acquisition range only.")
-        warnings.warn(msg + " Expect 1/K0 errors of a few percent; reference ions give ~0.3 %.",
-                      RuntimeWarning, stacklevel=3)
+        msg = (
+            f"Falling back to the acquisition-range mobility approximation: {reason}."
+            if reason
+            else "Mobility calibrated from the nominal acquisition range only."
+        )
+        warnings.warn(
+            msg + " Expect 1/K0 errors of a few percent; reference ions give ~0.3 %.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
         return MobilityCalibration.from_acquisition_range(lo, hi, ns, warn=False)
 
     # -- properties -------------------------------------------------------
@@ -322,9 +372,11 @@ class TdfData:
     def frame_mz_mobility(self, frame_id: int):
         """One frame as (m/z, 1/K0, intensity) arrays."""
         fr = self.read_frame(frame_id)
-        return (self.index_to_mz(fr.tof_indices.astype(np.float64)),
-                self.scan_to_oneoverk0(fr.scan.astype(np.float64)),
-                fr.intensities)
+        return (
+            self.index_to_mz(fr.tof_indices.astype(np.float64)),
+            self.scan_to_oneoverk0(fr.scan.astype(np.float64)),
+            fr.intensities,
+        )
 
     # -- conversions ------------------------------------------------------
 
@@ -352,12 +404,17 @@ class TdfData:
 
     def close(self):
         if getattr(self, "_bin", None) is not None:
-            self._bin.close(); self._bin = None  # type: ignore[assignment]
+            self._bin.close()
+            self._bin = None  # type: ignore[assignment]
         if getattr(self, "meta", None) is not None:
             self.meta.close()
 
-    def __enter__(self): return self
-    def __exit__(self, *exc): self.close()
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
     def __del__(self):
-        try: self.close()
-        except Exception: pass
+        with contextlib.suppress(Exception):
+            self.close()

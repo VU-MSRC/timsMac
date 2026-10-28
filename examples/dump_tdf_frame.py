@@ -12,7 +12,6 @@ import sys
 import warnings
 
 import numpy as np
-
 from pytsf import TdfData
 
 
@@ -32,14 +31,18 @@ def main(argv: list[str]) -> int:
 
     with tdf:
         print(f"{d}: {len(tdf)} frames x {tdf.meta.num_scans} scans")
-        print(f"m/z   : fitted to {tdf.calibration.ref_mz.size} calibration points, "
-              f"{tdf.calibration.mz_min:.1f}-{tdf.calibration.mz_max:.1f} m/z, "
-              f"fit RMS {tdf.calibration.fit_rms_ppm:.2f} ppm")
+        print(
+            f"m/z   : fitted to {tdf.calibration.ref_mz.size} calibration points, "
+            f"{tdf.calibration.mz_min:.1f}-{tdf.calibration.mz_max:.1f} m/z, "
+            f"fit RMS {tdf.calibration.fit_rms_ppm:.2f} ppm"
+        )
         print(f"1/K0  : {tdf.mobility}")
         for ion in tdf.reference_ions:
             flag = "used" if ion in tdf.mobility.reference_ions else "rejected"
-            print(f"        {ion.name:>18s}  S/N {ion.snr:8.1f}  m/z err {ion.mz_error_ppm:+6.2f} ppm  "
-                  f"apex scan {ion.apex_scan:8.2f}  {flag}")
+            print(
+                f"        {ion.name:>18s}  S/N {ion.snr:8.1f}  m/z err {ion.mz_error_ppm:+6.2f} ppm  "
+                f"apex scan {ion.apex_scan:8.2f}  {flag}"
+            )
 
         fid = frame_id if frame_id is not None else tdf.frames[0].id
         mz, k0, inten = tdf.frame_mz_mobility(fid)
@@ -48,8 +51,14 @@ def main(argv: list[str]) -> int:
         print(f"\nframe {fid}: {mz.size} peaks")
         rows = np.column_stack([scan, k0, ccs, mz, inten])
         if csv:
-            np.savetxt(csv, rows, delimiter=",", header="scan,oneoverk0,ccs_z1,mz,intensity",
-                       fmt=["%d", "%.5f", "%.2f", "%.5f", "%d"], comments="")
+            np.savetxt(
+                csv,
+                rows,
+                delimiter=",",
+                header="scan,oneoverk0,ccs_z1,mz,intensity",
+                fmt=["%d", "%.5f", "%.2f", "%.5f", "%d"],
+                comments="",
+            )
             print(f"wrote {csv}")
         else:
             print(f"{'scan':>6s} {'1/K0':>8s} {'CCS(z=1)':>9s} {'m/z':>11s} {'intensity':>10s}")

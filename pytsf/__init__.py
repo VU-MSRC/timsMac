@@ -16,25 +16,25 @@ in pure Python so it runs anywhere NumPy does.
 See README.md for how m/z and mobility are calibrated and how accurate they are.
 """
 
-from .api import TsfData
-from .meta import Frame, MzCalibrationRow, TsfError, TsfMetadata
-from .mobility import MobilityCalibration, ccs_to_oneoverk0, find_reference_ions, oneoverk0_to_ccs
-from .tdf import TdfData, TdfFrame, TdfMetadata
+from pytsf.api import TsfData
+from pytsf.meta import Frame, MzCalibrationRow, TsfError, TsfMetadata
+from pytsf.mobility import MobilityCalibration, ccs_to_oneoverk0, find_reference_ions, oneoverk0_to_ccs
+from pytsf.tdf import TdfData, TdfFrame, TdfMetadata
 
 __all__ = [
-    "TsfData",
+    "Frame",
+    "MobilityCalibration",
+    "MzCalibrationRow",
     "TdfData",
     "TdfFrame",
     "TdfMetadata",
-    "MobilityCalibration",
+    "TsfData",
+    "TsfError",
+    "TsfMetadata",
+    "__version__",
+    "ccs_to_oneoverk0",
     "find_reference_ions",
     "oneoverk0_to_ccs",
-    "ccs_to_oneoverk0",
-    "TsfMetadata",
-    "Frame",
-    "MzCalibrationRow",
-    "TsfError",
-    "__version__",
 ]
 
 __version__ = "1.1.0"

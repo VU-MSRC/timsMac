@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import ctypes
 import os
-from typing import Optional
 
 import numpy as np
 
@@ -58,8 +57,10 @@ class Oracle:
         d.tsf_has_recalibrated_state.restype = ctypes.c_uint32
 
         conv = [
-            ctypes.c_uint64, ctypes.c_int64,
-            ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double),
+            ctypes.c_uint64,
+            ctypes.c_int64,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
             ctypes.c_uint32,
         ]
         d.tsf_index_to_mz.argtypes = conv
@@ -68,23 +69,30 @@ class Oracle:
         d.tsf_mz_to_index.restype = ctypes.c_uint32
 
         d.tsf_read_line_spectrum_v2.argtypes = [
-            ctypes.c_uint64, ctypes.c_int64,
-            ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_float),
+            ctypes.c_uint64,
+            ctypes.c_int64,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_float),
             ctypes.c_int32,
         ]
         d.tsf_read_line_spectrum_v2.restype = ctypes.c_int32
         d.tsf_read_line_spectrum_with_width_v2.argtypes = [
-            ctypes.c_uint64, ctypes.c_int64,
-            ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_float),
-            ctypes.POINTER(ctypes.c_float), ctypes.c_int32,
+            ctypes.c_uint64,
+            ctypes.c_int64,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_int32,
         ]
         d.tsf_read_line_spectrum_with_width_v2.restype = ctypes.c_int32
         d.tsf_read_profile_spectrum_v2.argtypes = [
-            ctypes.c_uint64, ctypes.c_int64,
-            ctypes.POINTER(ctypes.c_uint32), ctypes.c_int32,
+            ctypes.c_uint64,
+            ctypes.c_int64,
+            ctypes.POINTER(ctypes.c_uint32),
+            ctypes.c_int32,
         ]
         d.tsf_read_profile_spectrum_v2.restype = ctypes.c_int32
-        self.handle: Optional[int] = None
+        self.handle: int | None = None
 
     # -- lifecycle -------------------------------------------------------
 
@@ -94,8 +102,7 @@ class Oracle:
         return buf.value.decode(errors="replace")
 
     def open(self, directory: str, use_recalibrated_state: bool = False) -> int:
-        h = self.d.tsf_open(str(directory).encode("utf-8"),
-                            1 if use_recalibrated_state else 0)
+        h = self.d.tsf_open(str(directory).encode("utf-8"), 1 if use_recalibrated_state else 0)
         if h == 0:
             raise RuntimeError(f"tsf_open failed: {self.last_error()}")
         self.handle = h
@@ -106,7 +113,7 @@ class Oracle:
             self.d.tsf_close(self.handle)
             self.handle = None
 
-    def __enter__(self) -> "Oracle":
+    def __enter__(self) -> Oracle:
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -117,10 +124,13 @@ class Oracle:
     def _conv(self, func, frame_id: int, values) -> np.ndarray:
         a = np.ascontiguousarray(values, dtype=np.float64)
         out = np.empty(a.size, dtype=np.float64)
-        ok = func(self.handle, frame_id,
-                  a.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-                  out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-                  a.size)
+        ok = func(
+            self.handle,
+            frame_id,
+            a.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            a.size,
+        )
         if not ok:
             raise RuntimeError(self.last_error())
         return out
@@ -135,9 +145,12 @@ class Oracle:
         idx = np.empty(cap, dtype=np.float64)
         inten = np.empty(cap, dtype=np.float32)
         n = self.d.tsf_read_line_spectrum_v2(
-            self.handle, frame_id,
+            self.handle,
+            frame_id,
             idx.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-            inten.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), cap)
+            inten.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            cap,
+        )
         if n < 0:
             raise RuntimeError(self.last_error())
         if n > cap:
@@ -149,10 +162,13 @@ class Oracle:
         inten = np.empty(cap, dtype=np.float32)
         width = np.empty(cap, dtype=np.float32)
         n = self.d.tsf_read_line_spectrum_with_width_v2(
-            self.handle, frame_id,
+            self.handle,
+            frame_id,
             idx.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
             inten.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
-            width.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), cap)
+            width.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            cap,
+        )
         if n < 0:
             raise RuntimeError(self.last_error())
         if n > cap:
@@ -162,8 +178,11 @@ class Oracle:
     def read_profile_spectrum(self, frame_id: int, cap: int = 1 << 21):
         buf = np.empty(cap, dtype=np.uint32)
         n = self.d.tsf_read_profile_spectrum_v2(
-            self.handle, frame_id,
-            buf.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)), cap)
+            self.handle,
+            frame_id,
+            buf.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+            cap,
+        )
         if n < 0:
             raise RuntimeError(self.last_error())
         if n > cap:
@@ -187,16 +206,35 @@ class TdfOracle:
         d.tims_close.restype = None
         d.tims_get_last_error_string.argtypes = [ctypes.c_char_p, ctypes.c_uint32]
         d.tims_get_last_error_string.restype = ctypes.c_uint32
-        d.tims_read_scans_v2.argtypes = [ctypes.c_uint64, ctypes.c_int64, ctypes.c_uint32,
-                                         ctypes.c_uint32, ctypes.c_void_p, ctypes.c_uint32]
+        d.tims_read_scans_v2.argtypes = [
+            ctypes.c_uint64,
+            ctypes.c_int64,
+            ctypes.c_uint32,
+            ctypes.c_uint32,
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+        ]
         d.tims_read_scans_v2.restype = ctypes.c_uint32
-        conv = [ctypes.c_uint64, ctypes.c_int64, ctypes.POINTER(ctypes.c_double),
-                ctypes.POINTER(ctypes.c_double), ctypes.c_uint32]
-        for fn in ("tims_index_to_mz", "tims_mz_to_index",
-                   "tims_scannum_to_oneoverk0", "tims_oneoverk0_to_scannum"):
+        conv = [
+            ctypes.c_uint64,
+            ctypes.c_int64,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_uint32,
+        ]
+        for fn in (
+            "tims_index_to_mz",
+            "tims_mz_to_index",
+            "tims_scannum_to_oneoverk0",
+            "tims_oneoverk0_to_scannum",
+        ):
             getattr(d, fn).argtypes = conv
             getattr(d, fn).restype = ctypes.c_uint32
-        d.tims_oneoverk0_to_ccs_for_mz.argtypes = [ctypes.c_double, ctypes.c_int32, ctypes.c_double]
+        d.tims_oneoverk0_to_ccs_for_mz.argtypes = [
+            ctypes.c_double,
+            ctypes.c_int32,
+            ctypes.c_double,
+        ]
         d.tims_oneoverk0_to_ccs_for_mz.restype = ctypes.c_double
         self.handle = 0
 
@@ -217,7 +255,7 @@ class TdfOracle:
             self.d.tims_close(self.handle)
             self.handle = 0
 
-    def __enter__(self) -> "TdfOracle":
+    def __enter__(self) -> TdfOracle:
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -226,17 +264,29 @@ class TdfOracle:
     def _conv(self, func, frame_id: int, values) -> np.ndarray:
         values = np.ascontiguousarray(values, dtype=np.float64)
         out = np.empty_like(values)
-        ok = func(self.handle, frame_id,
-                  values.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-                  out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)), values.size)
+        ok = func(
+            self.handle,
+            frame_id,
+            values.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            values.size,
+        )
         if not ok:
             raise RuntimeError(self.last_error())
         return out
 
-    def index_to_mz(self, frame_id, indices): return self._conv(self.d.tims_index_to_mz, frame_id, indices)
-    def mz_to_index(self, frame_id, mzs): return self._conv(self.d.tims_mz_to_index, frame_id, mzs)
-    def scannum_to_oneoverk0(self, frame_id, scans): return self._conv(self.d.tims_scannum_to_oneoverk0, frame_id, scans)
-    def oneoverk0_to_scannum(self, frame_id, k0): return self._conv(self.d.tims_oneoverk0_to_scannum, frame_id, k0)
+    def index_to_mz(self, frame_id, indices):
+        return self._conv(self.d.tims_index_to_mz, frame_id, indices)
+
+    def mz_to_index(self, frame_id, mzs):
+        return self._conv(self.d.tims_mz_to_index, frame_id, mzs)
+
+    def scannum_to_oneoverk0(self, frame_id, scans):
+        return self._conv(self.d.tims_scannum_to_oneoverk0, frame_id, scans)
+
+    def oneoverk0_to_scannum(self, frame_id, k0):
+        return self._conv(self.d.tims_oneoverk0_to_scannum, frame_id, k0)
+
     def oneoverk0_to_ccs(self, k0: float, charge: int, mz: float) -> float:
         return self.d.tims_oneoverk0_to_ccs_for_mz(k0, charge, mz)
 
@@ -245,8 +295,7 @@ class TdfOracle:
         cnt = 1 << 16
         while True:
             buf = np.empty(cnt, dtype=np.uint32)
-            need = self.d.tims_read_scans_v2(self.handle, frame_id, scan_begin, scan_end,
-                                             buf.ctypes.data, 4 * cnt)
+            need = self.d.tims_read_scans_v2(self.handle, frame_id, scan_begin, scan_end, buf.ctypes.data, 4 * cnt)
             if need == 0:
                 raise RuntimeError(self.last_error())
             if need > 4 * cnt:
@@ -258,8 +307,10 @@ class TdfOracle:
         scans, idx, inten = [], [], []
         for i in range(d):
             n = int(counts[i])
-            idx.append(buf[d:d + n]); d += n
-            inten.append(buf[d:d + n]); d += n
+            idx.append(buf[d : d + n])
+            d += n
+            inten.append(buf[d : d + n])
+            d += n
             scans.append(np.full(n, scan_begin + i, dtype=np.int32))
         cat = lambda xs, dt: np.concatenate(xs).astype(dt) if xs else np.empty(0, dt)  # noqa: E731
         return cat(scans, np.int32), cat(idx, np.uint32), cat(inten, np.uint32)
