@@ -1,4 +1,4 @@
-# pytsf and timsMac
+# timsMAC and pytsf
 
 **Read Bruker timsTOF `.d` data — TSF and TDF (ion mobility) — on macOS, in pure Python, with no vendor library.**
 
@@ -453,7 +453,7 @@ implementation and validated against the vendor library.
 ## Citing
 
 If `pytsf` is useful in published work, please cite this repository
-(`https://github.com/OWNER/REPO](https://github.com/VU-MSRC/timsMac/`), and please also cite
+[timsMAC](https://github.com/VU-MSRC/timsMac/), and please also cite
 [timsrust](https://github.com/MannLabs/timsrust) and the
 [OpenTIMS paper](https://pubs.acs.org/doi/10.1021/acs.jproteome.0c00962) — this would not
 exist without that groundwork.
