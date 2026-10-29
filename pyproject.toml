@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=77"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling>=1.27", "packaging>=24.2"]
+build-backend = "hatchling.build"
 
 [project]
 name = "pytsf"
@@ -19,8 +19,24 @@ dependencies = [
 test = ["pytest>=7", "coverage>=7"]
 dev = ["pytsf[test]", "ruff"]
 
-[tool.setuptools.packages.find]
-include = ["pytsf*"]
+[tool.hatch.build.targets.wheel]
+packages = ["pytsf"]
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/pytsf/**/*.py",
+    "/capi/Makefile",
+    "/capi/*.c",
+    "/capi/*.h",
+    "/capi/*.py",
+    "/tests/*.py",
+    "/examples/*.py",
+    "/examples/*.ipynb",
+    "/PROVENANCE.md",
+    "/Using-the-dylib-onmac.md",
+]
 
 [tool.cibuildwheel]
 build = "cp3{9,10,11,12,13,14}-*"

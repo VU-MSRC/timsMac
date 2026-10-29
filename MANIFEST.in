@@ -1,5 +1,0 @@
-include PROVENANCE.md
-include Using-the-dylib-onmac.md
-recursive-include capi Makefile *.c *.h *.py
-recursive-include examples *.py *.ipynb
-recursive-include tests *.py
