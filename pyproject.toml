@@ -40,6 +40,7 @@ include = [
 
 [tool.cibuildwheel]
 build = "cp3{9,10,11,12,13,14}-*"
+build-frontend = "uv"
 skip = "*-musllinux_*"
 environment = { PYTSF_BUILD_CAPI = "1" }
 test-extras = ["test"]
