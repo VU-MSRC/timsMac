@@ -16,11 +16,36 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=7"]
+test = ["pytest>=7", "coverage>=7"]
 dev = ["pytsf[test]", "ruff"]
 
 [tool.setuptools.packages.find]
 include = ["pytsf*"]
+
+[tool.cibuildwheel]
+build = "cp3{9,10,11,12,13,14}-*"
+skip = "*-musllinux_*"
+environment = { PYTSF_BUILD_CAPI = "1" }
+test-extras = ["test"]
+# Copy tests away from the checkout so imports exercise the installed wheel.
+test-sources = ["tests"]
+test-environment = { PYTSF_REQUIRE_CAPI = "1" }
+test-command = "python -m pytest tests -v --color=yes"
+
+[tool.cibuildwheel.linux]
+manylinux-x86_64-image = "manylinux_2_28"
+before-all = "dnf install -y sqlite-devel libzstd-devel"
+
+[tool.cibuildwheel.macos]
+before-all = "brew install zstd"
+# Match the minimum supported by the Homebrew zstd bottles on these runners.
+environment = { PYTSF_BUILD_CAPI = "1", MACOSX_DEPLOYMENT_TARGET = "15.0" }
+
+[tool.coverage.run]
+source = ["pytsf"]
+
+[tool.coverage.paths]
+source = ["pytsf", "*/site-packages/pytsf"]
 
 # https://github.com/charliermarsh/ruff
 [tool.ruff]

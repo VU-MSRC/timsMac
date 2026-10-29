@@ -1,0 +1,62 @@
+name: Build distributions
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wheels:
+    name: C API wheel (${{ matrix.platform.name }})
+    needs: source
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - {os: ubuntu-latest, name: linux-x86_64, arch: x86_64}
+          - {os: macos-15-intel, name: macos-x86_64, arch: x86_64}
+          - {os: macos-15, name: macos-arm64, arch: arm64}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.2.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist-source
+          path: source-dist
+
+      - name: Build and test C API wheels
+        env:
+          CIBW_ARCHS: ${{ matrix.platform.arch }}
+        run: uvx cibuildwheel==4.3.4 source-dist/*.tar.gz --output-dir wheelhouse
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ matrix.platform.name }}
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+
+  source:
+    name: Source distribution and Python wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.2.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      # uv builds the wheel from the sdist, checking the archive is complete.
+      - run: uv build
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-source
+          path: dist/*
+          if-no-files-found: error
