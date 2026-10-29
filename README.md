@@ -46,6 +46,23 @@ pip install ".[examples]"        # + matplotlib, pyimzML and JupyterLab for the 
 pip install -e ".[test]"         # editable install for developing or running the tests
 ```
 
+CI builds a pure-Python wheel and C API wheels for Linux x86-64 and macOS
+(Intel and Apple Silicon). The native wheels include `libtimsdata_tsf.so` or
+`libtimsdata_tsf.dylib` and `tsf_compat.h` inside the installed `pytsf` package.
+They work across Python 3.9 and later without a Python ABI dependency. The macOS
+wheels require macOS 15 or later. Source installs remain pure Python by default.
+
+To build a native wheel locally, first install the SQLite and zstd development
+libraries described below, then run:
+
+```bash
+PYTSF_BUILD_CAPI=1 uv build --wheel
+```
+
+Local native builds link against your system libraries. CI uses cibuildwheel to
+bundle the required third-party shared libraries and tests the installed wheels
+against synthetic data without the vendor SDK.
+
 ## What it does
 
 **TSF**
