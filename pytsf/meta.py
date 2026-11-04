@@ -170,6 +170,9 @@ class TsfMetadata:
         return [r[0] for r in self.conn.execute("SELECT Id FROM Frames ORDER BY Id")]
 
     def frame(self, frame_id: int) -> Frame:
+        """Metadata for one spectrum; `frame_id` may be any integer-like (e.g. numpy) value."""
+        # sqlite3 binds numpy integers as BLOBs, which never match an INTEGER Id
+        frame_id = int(frame_id)
         cached = self._frame_cache.get(frame_id)
         if cached is not None:
             return cached
@@ -247,7 +250,7 @@ class TsfMetadata:
             "SELECT pd.PermanentName AS name, p.Value AS value "
             "FROM Properties p JOIN PropertyDefinitions pd ON p.Property = pd.Id "
             "WHERE p.Frame = ?",
-            (frame_id,),
+            (int(frame_id),),
         )
         return {r["name"]: r["value"] for r in rows if r["value"] is not None}
 

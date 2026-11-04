@@ -165,6 +165,9 @@ class TdfMetadata:
         return [r[0] for r in self.conn.execute("SELECT Id FROM Frames ORDER BY Id")]
 
     def frame(self, frame_id: int) -> TdfFrame:
+        """Metadata for one frame; `frame_id` may be any integer-like (e.g. numpy) value."""
+        # sqlite3 binds numpy integers as BLOBs, which never match an INTEGER Id
+        frame_id = int(frame_id)
         f = self._frames.get(frame_id)
         if f is not None:
             return f
@@ -208,7 +211,7 @@ class TdfMetadata:
         """Rows of `PasefFrameMsMsInfo` (scan ranges, isolation, precursor id)."""
         if frame_id is None:
             return self.table("PasefFrameMsMsInfo")
-        return list(self.conn.execute("SELECT * FROM PasefFrameMsMsInfo WHERE Frame=?", (frame_id,)))
+        return list(self.conn.execute("SELECT * FROM PasefFrameMsMsInfo WHERE Frame=?", (int(frame_id),)))
 
     def precursors(self) -> list[sqlite3.Row]:
         return self.table("Precursors")
