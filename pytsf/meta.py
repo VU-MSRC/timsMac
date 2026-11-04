@@ -81,7 +81,7 @@ class TsfMetadata:
 
         # Open read-only so we can never damage an acquisition directory.
         uri = "file:" + self.sqlite_path.replace("?", "%3f").replace("#", "%23") + "?mode=ro"
-        self.conn = sqlite3.connect(uri, uri=True)
+        self.conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
 
         self.global_metadata: dict[str, str] = {

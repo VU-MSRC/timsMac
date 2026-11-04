@@ -96,7 +96,7 @@ class TdfMetadata:
         if not os.path.isfile(self.sqlite_path):
             raise TsfError(f"No {TDF_SQLITE_NAME} in {self.analysis_directory}")
         uri = "file:" + self.sqlite_path.replace("?", "%3f").replace("#", "%23") + "?mode=ro"
-        self.conn = sqlite3.connect(uri, uri=True)
+        self.conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.global_metadata = {
             r["Key"]: r["Value"] for r in self.conn.execute("SELECT Key, Value FROM GlobalMetadata")

@@ -254,3 +254,26 @@ def test_ccs_matches_vendor():
     ]:
         with TdfOracle() as oracle:
             assert oneoverk0_to_ccs(k0, mz, z) == pytest.approx(oracle.oneoverk0_to_ccs(k0, z, mz), rel=1e-6)
+
+
+# -- threading ---------------------------------------------------------------
+
+
+def test_close_from_other_thread(dataset):
+    """Objects can be closed (or garbage collected) on a different thread than the one that opened them."""
+    import threading
+
+    tdf = TdfData(dataset)
+    assert len(tdf.frames) > 0
+    errors: list[BaseException] = []
+
+    def _close() -> None:
+        try:
+            tdf.close()
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    t = threading.Thread(target=_close)
+    t.start()
+    t.join()
+    assert not errors
