@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling>=1.27", "packaging>=24.2"]
+requires = ["hatchling>=1.27", "hatch-vcs", "packaging>=24.2"]
 build-backend = "hatchling.build"
 
 [project]
 name = "pytsf"
-version = "1.0.0"
+dynamic = ["version"]
 description = "Pure-Python reader for Bruker timsTOF TSF (.d) spectrum data — works on macOS, where Bruker ships no library"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -18,6 +18,9 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest>=7", "coverage>=7"]
 dev = ["pytsf[test]", "ruff"]
+
+[tool.hatch.version]
+source = "vcs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["pytsf"]
